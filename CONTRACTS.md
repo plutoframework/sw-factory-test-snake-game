@@ -2,8 +2,9 @@
 
 The default browser remains a static shell. The completed gameplay adapter is
 loaded only when gameplay is requested. `storage.mjs` is loaded only when
-savedProgress is requested. `challenges.mjs` and `replay.mjs` deliberately do not
-exist and remain unavailable, including when requested with `all`.
+savedProgress is requested. `challenges.mjs` provides standalone opt-in
+configuration, not browser UI; challenge UI remains unavailable even under `all`.
+`replay.mjs` deliberately does not exist and remains unavailable.
 
 ## Features (`features.mjs`, implemented)
 
@@ -46,7 +47,7 @@ Disposal cancels the clock and makes operations inert. No storage is accessed.
 
 ## Engine (`game.mjs`, implemented; wired only behind gameplay)
 
-Named exports: `newGame`, `turn`, `tick`, `togglePause`, and `restart`.
+Named exports: `newGame`, `turn`, `tick`, `togglePause`, `restart`, and `getTickMs`.
 The engine is pure JavaScript with no DOM, timers, networking, or storage.
 Changed states are deeply frozen, with fresh cell objects; no operation modifies
 or freezes caller-owned input. No-op operations may return the input unchanged.
@@ -91,6 +92,74 @@ copies); malformed state snapshots are outside this contract. The future storage
 boundary must validate snapshots before use. The browser adapter owns input and
 scheduling, not the engine.
 
+## Challenges (`challenges.mjs`, implemented; not wired to UI)
+
+`createChallenge({ width = 20, height = 20, seed = 1, difficulty = 'normal',
+obstacleCount } = {})` returns a deeply frozen engine options object:
+`{ width, height, seed, difficulty, obstacles: [{ x, y }, ...], safeStart: true }`.
+Pass it directly to `newGame(config)`. No global RNG, flags, clock, or browser
+state is read. Identical options produce identical layouts; config plus the same
+ordered engine operations reproduces the game. Restart preserves all options.
+
+Challenge dimensions use engine minimums but cap area at **4096** cells to bound
+layout work. Seed uses the engine unsigned 32-bit contract. Challenge difficulty
+is `easy`, `normal`, or `hard`. Default obstacle counts are floor(area times
+0.08, 0.14, or 0.20 respectively). An explicit integer `obstacleCount` from zero
+to board area overrides density. Invalid options throw `RangeError`.
+
+Generation protects the initial snake, its first forward step, and the classic
+initial food cell. Candidates are shuffled with a local seed-initialized LCG
+(the engine's constants), then each is considered at most once. A candidate is
+kept only if all remaining board cells stay connected by cardinal movement.
+The result may have **fewer obstacles than requested**, especially on tiny or
+saturated boards: safety takes priority. Obstacles are returned row-major.
+Work is bounded by O(area²) time and O(area) space; there is no retry loop.
+Food uses the engine's separate seed-initialized PRNG, excluding obstacles.
+Every generated configuration enables `safeStart`: initial food is selected only
+from cells reachable from the head while treating the entire initial body as
+blocked. A bounded flood fill (O(area) time/space) establishes a simple path to
+that food. Following that path with legal turns cannot hit the initial body or
+its own non-repeating path. The protected forward cell ensures the candidate set
+is nonempty, even for one-row boards or obstacle-created dead-end corridors.
+Static connectivity alone is not a playability proof; the safe-start filter
+provides that additional first-food guarantee. Later food placement excludes only
+snake and obstacles as usual. Survival after player decisions or subsequent food
+is not guaranteed, and the moving body can still block routes.
+
+### Opt-in engine configuration
+
+`newGame` also accepts `obstacles`, `difficulty = 'classic'`, and the literal
+boolean `safeStart = false`. With `safeStart: true`, only initial food placement
+is restricted to body-avoiding reachable free cells, still enumerated row-major
+and using exactly one normal LCG step. States record `safeStart: true`, and
+restart preserves it. False/omitted safeStart preserves classic placement and
+state shape. Non-boolean values throw `RangeError`. Obstacles must be
+an array of unique in-bounds integer cells, excluding the initial snake and its
+first forward step. All non-obstacle cells must be connected. Invalid layouts
+throw `RangeError`. Food excludes obstacles; collision with an obstacle ends the
+game without moving the last valid board. Filling all non-obstacle cells ends
+with null food. Caller-owned obstacles are copied, never frozen or mutated.
+Opted-in states include deeply frozen `obstacles` and `difficulty` fields.
+Omitting these options preserves the original classic state shape and PRNG results.
+
+`getTickMs(state)` is a pure scheduling hint, not a timer. `tick` always advances
+one cell. Speeds in milliseconds are:
+
+| Difficulty | Initial | Reduction per 5 food | Minimum |
+| --- | ---: | ---: | ---: |
+| classic (default) | 150 | 0 | 150 |
+| easy | 200 | 5 | 110 |
+| normal | 150 | 8 | 70 |
+| hard | 100 | 10 | 45 |
+
+Progression is derived from score (floor(score / 5)), never elapsed time. Pause
+and collisions do not change it; restart resets score/speed. Engine options are
+explicit library opt-ins, independent of feature requests. Enabled gameplay
+loads the classic engine without challenge options. The shell never imports
+challenges and advertises them as unavailable even under `all`; challenge UI
+wiring remains a later integration increment. `board.mjs` is an
+internal topology helper, not a public API.
+
 ## Other reserved boundaries
 
 - `storage.mjs` (implemented): `createProgress({ enabled = false, getStorage =
@@ -110,10 +179,9 @@ scheduling, not the engine.
   updates retain the top ten, including ties and zero. Invalid API updates throw
   RangeError before mutation. Gameplay records only transitions into gameover,
   never pauses, restarts or running games. Sound/difficulty are preferences only;
-  no audio or difficulty rules are implemented. The panel renders numeric scores
+  no audio or preference-driven difficulty is wired. Standalone engine difficulty
+  options do not consume these settings. The panel renders numeric scores
   and settings using safe DOM properties; no stored HTML is rendered.
-- `challenges.mjs`: deterministic challenge definitions and configurations passed
-  into the engine, separate from UI and persistence. No challenge rules implemented.
 - `replay.mjs`: versioned seed/configuration plus ordered input recording and
   deterministic playback through engine operations. No separate simulation rules
   and no recording/playback implemented.
