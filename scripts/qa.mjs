@@ -73,6 +73,30 @@ async function checkGameplay(page, name) {
   }
 }
 
+async function checkPersistence(page) {
+  assert.deepEqual(await page.locator('#high-scores li').allTextContents(), ['0']);
+  const writes = await page.evaluate(() => window.storageCalls.writes);
+  await page.clock.runFor(1600);
+  assert.equal(await page.evaluate(() => window.storageCalls.writes), writes, 'Paused games must not be saved');
+  await page.locator('#sound').check();
+  await page.locator('#difficulty').selectOption('hard');
+  await page.locator('#restart').click();
+  await page.locator('[data-direction="up"]').click(); await page.clock.runFor(960);
+  await page.locator('[data-direction="right"]').click(); await page.clock.runFor(1600);
+  assert.equal(await page.locator('#board').getAttribute('data-status'), 'gameover');
+  assert.deepEqual(await page.locator('#high-scores li').allTextContents(), ['1', '0']);
+  const completedWrites = await page.evaluate(() => window.storageCalls.writes);
+  await page.clock.runFor(1600);
+  assert.equal(await page.evaluate(() => window.storageCalls.writes), completedWrites, 'Save each completed game exactly once');
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForFunction(() => document.documentElement.dataset.ready === 'true');
+  assert.deepEqual(await page.locator('#high-scores li').allTextContents(), ['1', '0']);
+  assert.ok(await page.locator('#sound').isChecked());
+  assert.equal(await page.locator('#difficulty').inputValue(), 'hard');
+  assert.equal(await page.locator('#score').textContent(), '0', 'Reload starts a fresh game, not a snapshot');
+  await page.locator('#pause').click();
+}
+
 const profile = process.env.SNAKE_FEATURES ?? 'none';
 assert.ok(['none', 'all'].includes(profile), 'SNAKE_FEATURES must be none or all');
 const modulePath = process.env.PLUTO_PLAYWRIGHT_MODULE;
@@ -91,6 +115,13 @@ try {
     ['mobile', { width: 390, height: 844 }],
   ]) {
     const page = await browser.newPage({ viewport, ...(name === 'mobile' ? { isMobile: true, hasTouch: true } : {}) });
+    await page.addInitScript(() => {
+      window.storageCalls = { reads: 0, writes: 0 };
+      const get = Storage.prototype.getItem;
+      const set = Storage.prototype.setItem;
+      Storage.prototype.getItem = function (...args) { window.storageCalls.reads++; return get.apply(this, args); };
+      Storage.prototype.setItem = function (...args) { window.storageCalls.writes++; return set.apply(this, args); };
+    });
     await page.clock.install();
     await page.clock.pauseAt(new Date());
     const errors = [];
@@ -125,13 +156,16 @@ try {
       if (enabled) {
         assert.equal(engineRequests.length, 1, 'Enabled gameplay loads the existing engine');
         await checkGameplay(page, name);
+        await checkPersistence(page);
       } else {
         assert.ok(await page.getByText('Gameplay is coming soon.', { exact: true }).isVisible());
         assert.equal(await page.locator('button, canvas').count(), 0, 'Disabled mode preserves shell');
         assert.deepEqual(engineRequests, [], 'Disabled shell must not load engine');
+        assert.equal(await page.locator('#saved-progress').count(), 0);
+        assert.deepEqual(await page.evaluate(() => window.storageCalls), { reads: 0, writes: 0 }, 'Disabled mode never reads or writes storage');
       }
       assert.deepEqual(await page.evaluate(() => JSON.parse(document.documentElement.dataset.features)), resolveFeatures(query === `?features=${profile}` ? profile : undefined));
-      assert.deepEqual(await page.evaluate(() => JSON.parse(document.documentElement.dataset.availableFeatures)), resolveFeatures({ gameplay: enabled }));
+      assert.deepEqual(await page.evaluate(() => JSON.parse(document.documentElement.dataset.availableFeatures)), resolveFeatures({ gameplay: enabled, savedProgress: enabled }));
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: horizontal overflow`);
       assert.deepEqual(errors, [], `${name}: browser errors`);
       if (query === `?features=${profile}`) {
@@ -141,6 +175,58 @@ try {
       }
     }
     await page.close();
+  }
+  // Exercise the independent module seam: gameplay on, savedProgress off.
+  {
+    const page = await browser.newPage();
+    const storageRequests = [];
+    page.on('request', request => {
+      if (new URL(request.url()).pathname === '/storage.mjs') storageRequests.push(request.url());
+    });
+    await page.addInitScript(() => {
+      window.storageAccesses = 0;
+      Object.defineProperty(window, 'localStorage', { get() {
+        window.storageAccesses++; throw Error('Disabled storage must not be accessed');
+      } });
+    });
+    await page.clock.install(); await page.clock.pauseAt(new Date());
+    await page.goto(`${server.url}/?features=none`, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => document.documentElement.dataset.ready === 'true');
+    await page.evaluate(async () => { const { mountGameplay } = await import('./gameplay.mjs'); mountGameplay(); });
+    await checkGameplay(page, 'desktop');
+    assert.equal(await page.locator('#saved-progress').count(), 0);
+    assert.equal(await page.evaluate(() => window.storageAccesses), 0);
+    assert.deepEqual(storageRequests, [], 'Gameplay alone must not import storage');
+    await page.close();
+  }
+  if (profile === 'all') {
+    for (const failure of ['corrupt', 'unknown', 'access', 'read', 'write']) {
+      const page = await browser.newPage();
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.addInitScript(failure => {
+        if (failure === 'corrupt' || failure === 'unknown') {
+          localStorage.setItem('snake-arcade.progress', failure === 'corrupt' ? '{' : JSON.stringify({ version: 99 }));
+        } else if (failure === 'access') {
+          Object.defineProperty(window, 'localStorage', { get() { throw Error('blocked'); } });
+        } else {
+          Storage.prototype[failure === 'read' ? 'getItem' : 'setItem'] = () => { throw Error('blocked'); };
+        }
+      }, failure);
+      await page.clock.install(); await page.clock.pauseAt(new Date());
+      await page.goto(`${server.url}/?features=all`, { waitUntil: 'networkidle' });
+      await page.waitForFunction(() => document.documentElement.dataset.ready === 'true');
+      assert.ok(await page.locator('#scores-empty').isVisible());
+      await page.locator('#sound').check();
+      await page.clock.runFor(1600);
+      assert.equal(await page.locator('#board').getAttribute('data-status'), 'gameover');
+      assert.deepEqual(await page.locator('#high-scores li').allTextContents(), ['0']);
+      assert.ok(await page.locator('#sound').isChecked());
+      await page.locator('#restart').click();
+      assert.equal(await page.locator('#board').getAttribute('data-status'), 'running');
+      assert.deepEqual(errors, [], `${failure}: gameplay survives storage failure`);
+      await page.close();
+    }
   }
   console.log(`QA passed (${profile}): desktop + 390px mobile`);
 } finally {
