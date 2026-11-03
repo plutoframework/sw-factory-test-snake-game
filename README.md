@@ -4,7 +4,11 @@ A dependency-free static browser arcade in cobalt, ivory, and orange. Open
 `/?features=all` for playable Snake: arrows/WASD or touch buttons steer, Space or
 Pause pauses, and Restart starts fresh. Eat orange food to score; walls and your
 own body end the game. With no flag (or `?features=none`), the original decorative
-shell is preserved. Storage, challenges, and replay remain unavailable.
+shell is preserved. With `all`, the local high-scores/settings panel saves the top
+ten completed scores and sound/difficulty preferences across reloads. Preferences
+do not yet change audio or difficulty. Corrupt records reset safely; blocked or full
+storage falls back to session memory. No storage is accessed with flags disabled.
+Challenges and replay remain unavailable.
 
 ## Run locally
 
@@ -20,7 +24,7 @@ Set `PORT` to choose another port. Stop with Ctrl-C. There is no build step or
 runtime network dependency; the browser loads only local HTML, CSS, and ES modules.
 The app can also be hosted on a static server serving this directory's public
 assets (`index.html`, `styles.css`, `app.mjs`, `features.mjs`, `gameplay.mjs`,
-`controller.mjs`, `game.mjs`).
+`controller.mjs`, `game.mjs`, `storage.mjs`).
 
 ## Validate
 
@@ -41,7 +45,9 @@ profile, and unknown-profile fallback at 1440px desktop and 390px mobile widths.
 It verifies branding, the disabled shell, enabled gameplay controls, scoring,
 reversal protection, pause/resume, game over, repeated restarts, touch target size,
 keyboard focus, no horizontal overflow, no browser errors/failed assets, and no
-remote runtime requests. A controlled browser clock makes movement checks deterministic. It writes full-page
+remote runtime requests. It also checks saved scores/settings across reload,
+exactly-once completion recording, disabled storage isolation, and storage failure
+recovery. A controlled browser clock makes movement checks deterministic. It writes full-page
 screenshots to `artifacts/qa/{none,all}/{desktop,mobile}.png` and closes both browser
 and server on success or failure. These generated files are ignored by Git.
 
@@ -63,9 +69,9 @@ Open `/?features=none` or `/?features=all` to explicitly request a profile. No q
 means all flags default off. Unknown profiles never enable a feature. For module
 callers, `resolveFeatures({ gameplay: true })` supports individual boolean overrides.
 The four known flags are `gameplay`, `savedProgress`, `challenges`, and `replay`.
-Requests do not imply readiness: only gameplay is complete and can activate.
-The other three capabilities stay off even under `all`, without importing absent
-modules. There is no feature persistence.
+Requests do not imply readiness: only gameplay and savedProgress are complete and
+can activate. Challenges and replay stay off even under `all`, without importing
+absent modules. There is no feature-flag persistence.
 
 ## Files and future seams
 
@@ -73,13 +79,15 @@ modules. There is no feature persistence.
 - `app.mjs`: flag-request wiring; lazy-loads completed gameplay only when requested.
 - `gameplay.mjs`: canvas rendering, keyboard and touch controls, status feedback.
 - `controller.mjs`: single simulation clock and per-tick input latch.
+- `storage.mjs`: bounded version-1 scores/settings records, injected storage and
+  graceful in-memory recovery; no saved game snapshots.
 - `features.mjs`: pure immutable flag resolution, tested in `test/`.
 - `game.mjs`: pure seeded Snake transitions, covered by `test/game.test.mjs`;
   loaded only for enabled gameplay. Exports `newGame`, `turn`, `tick`, `togglePause`,
   and `restart`.
 - `scripts/`: local server and browser QA lifecycle.
 - [CONTRACTS.md](CONTRACTS.md): concrete engine options, state, PRNG and transition
-  rules; reserved seams for storage, challenges, and replay (not implemented).
+  rules, persistence schema, and reserved seams for challenges and replay.
 
 Later capabilities must be completed and tested independently before wiring them
 into the shell. Keep unrelated unfinished features disabled.

@@ -1,6 +1,6 @@
 import { createController } from './controller.mjs';
 
-export function mountGameplay() {
+export function mountGameplay({ progress } = {}) {
   document.querySelector('.notice').lastChild.textContent = ' Cabinet ready';
   document.querySelector('.description').textContent = 'Eat the orange squares. Keep moving, and don’t hit the walls or your own tail.';
   document.querySelector('.availability').textContent = 'Arrows or WASD to steer.';
@@ -27,7 +27,46 @@ export function mountGameplay() {
   const score = document.querySelector('#score');
   const status = document.querySelector('#game-status');
   const pause = document.querySelector('#pause');
+  let renderProgress = () => {};
+  if (progress) {
+    document.querySelector('.up-next li').remove();
+    const panel = document.createElement('section');
+    panel.id = 'saved-progress';
+    panel.setAttribute('aria-labelledby', 'scores-title');
+    panel.innerHTML = `<h2 id="scores-title">Local high scores</h2>
+      <ol id="high-scores"></ol><p id="scores-empty">Finish a game to post your first score.</p>
+      <label class="sound-setting"><input id="sound" type="checkbox"> Sound preference</label>
+      <label class="difficulty-setting" for="difficulty">Difficulty preference <select id="difficulty"><option value="classic">Classic</option><option value="easy">Easy</option><option value="hard">Hard</option></select></label>
+      <p class="save-note">Saved on this browser when available. Sound is not yet available; all games use classic difficulty.</p>`;
+    document.querySelector('.intro').append(panel);
+    const sound = panel.querySelector('#sound');
+    const difficulty = panel.querySelector('#difficulty');
+    renderProgress = () => {
+      const saved = progress.read();
+      panel.querySelector('#high-scores').replaceChildren(...saved.scores.map(value => {
+        const item = document.createElement('li');
+        item.textContent = String(value);
+        return item;
+      }));
+      panel.querySelector('#scores-empty').hidden = saved.scores.length > 0;
+      sound.checked = saved.settings.sound;
+      difficulty.value = saved.settings.difficulty;
+    };
+    const saveSettings = () => {
+      progress.setSettings({ sound: sound.checked, difficulty: difficulty.value });
+      renderProgress();
+    };
+    sound.addEventListener('change', saveSettings);
+    difficulty.addEventListener('change', saveSettings);
+    renderProgress();
+  }
+  let previousStatus;
   const controller = createController(state => {
+    if (state.status === 'gameover' && previousStatus !== 'gameover' && progress) {
+      progress.addScore(state.score);
+      renderProgress();
+    }
+    previousStatus = state.status;
     const size = board.width / state.width;
     ctx.fillStyle = '#fff9e9';
     ctx.fillRect(0, 0, board.width, board.height);

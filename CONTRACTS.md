@@ -1,10 +1,9 @@
 # Module contracts
 
 The default browser remains a static shell. The completed gameplay adapter is
-loaded only when gameplay is requested. `storage.mjs`, `challenges.mjs`, and
-`replay.mjs` deliberately do not exist and must not be imported until their
-capability is independently complete. Those capabilities remain unavailable,
-including when requested with `all`.
+loaded only when gameplay is requested. `storage.mjs` is loaded only when
+savedProgress is requested. `challenges.mjs` and `replay.mjs` deliberately do not
+exist and remain unavailable, including when requested with `all`.
 
 ## Features (`features.mjs`, implemented)
 
@@ -22,7 +21,7 @@ The first query value wins for duplicate parameters. No URL flag is persisted.
 it to the URL. It accepts only `none` and `all`, defaulting to `none`.
 
 **Requested is not available.** The shell records the resolved request in
-`document.documentElement.dataset.features` and its active availability (only gameplay may be true) in
+`document.documentElement.dataset.features` and its active availability (only gameplay and savedProgress may be true) in
 `dataset.availableFeatures` (both JSON). `dataset.ready` becomes `true` when the
 shell module has initialized. Even an enabled request cannot activate missing
 modules. Later increments may activate a requested capability only once that
@@ -31,7 +30,7 @@ These dataset values are QA diagnostics, not authorization controls.
 
 ## Browser adapter (`controller.mjs`, `gameplay.mjs`, implemented)
 
-`mountGameplay()` replaces the decorative poster only when gameplay is enabled.
+`mountGameplay({ progress } = {})` optionally accepts the storage adapter below and replaces the decorative poster only when gameplay is enabled.
 It renders `canvas#board`, numeric-only `#score`, `button#pause`, `button#restart`,
 and four `button[data-direction]` controls. Keyboard arrows/WASD steer; Space
 prevents scrolling/default button activation and toggles pause. Key repeats are
@@ -94,9 +93,25 @@ scheduling, not the engine.
 
 ## Other reserved boundaries
 
-- `storage.mjs`: storage access, versioned serialization and validation, and safe
-  failure handling. It may persist validated engine snapshots; the engine must
-  never read browser storage. No keys, persistence schema, or functions implemented yet.
+- `storage.mjs` (implemented): `createProgress({ enabled = false, getStorage =
+  () => globalThis.localStorage } = {})` returns `read()`, `addScore(score)`, and
+  `setSettings({ sound, difficulty })`. Reads and updates return detached copies.
+  Disabled mode never acquires or accesses persistent storage. Enabled mode reads
+  once; access/read/write exceptions switch to session memory, without retrying.
+  Malformed or unknown records start at defaults and can be overwritten on the
+  next valid update. No engine snapshots or feature flags are persisted.
+  Key `STORAGE_KEY = 'snake-arcade.progress'` contains JSON version 1:
+  `{ version: 1, scores: [number], settings: { sound: boolean, difficulty: string } }`.
+  `decodeRecord(raw)` rejects malformed JSON, unknown versions, records over
+  `MAX_RECORD_LENGTH = 2048` characters, over `MAX_SCORES = 10` scores, invalid
+  scores (integers from 0 to 1,000,000 only), or invalid settings. Defaults are
+  empty scores, sound false, difficulty `classic`; other accepted preferences
+  are `easy` and `hard`. Extra fields are discarded. Scores sort descending;
+  updates retain the top ten, including ties and zero. Invalid API updates throw
+  RangeError before mutation. Gameplay records only transitions into gameover,
+  never pauses, restarts or running games. Sound/difficulty are preferences only;
+  no audio or difficulty rules are implemented. The panel renders numeric scores
+  and settings using safe DOM properties; no stored HTML is rendered.
 - `challenges.mjs`: deterministic challenge definitions and configurations passed
   into the engine, separate from UI and persistence. No challenge rules implemented.
 - `replay.mjs`: versioned seed/configuration plus ordered input recording and

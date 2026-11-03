@@ -5,13 +5,13 @@ import { startServer } from '../scripts/server.mjs';
 test('static server serves ES modules and only public assets; closes cleanly', async () => {
   const server = await startServer();
   try {
-    for (const [path, type] of [['/', 'text/html'], ['/styles.css', 'text/css'], ['/app.mjs', 'text/javascript'], ['/features.mjs', 'text/javascript'], ['/game.mjs', 'text/javascript'], ['/controller.mjs', 'text/javascript'], ['/gameplay.mjs', 'text/javascript']]) {
+    for (const [path, type] of [['/', 'text/html'], ['/styles.css', 'text/css'], ['/app.mjs', 'text/javascript'], ['/features.mjs', 'text/javascript'], ['/game.mjs', 'text/javascript'], ['/controller.mjs', 'text/javascript'], ['/gameplay.mjs', 'text/javascript'], ['/storage.mjs', 'text/javascript']]) {
       const response = await fetch(`${server.url}${path}`);
       assert.equal(response.status, 200);
       assert.ok(response.headers.get('content-type').startsWith(type));
       assert.ok((await response.text()).length > 0);
     }
-    for (const path of ['/package.json', '/scripts/qa.mjs', '/.git/config', '/storage.mjs']) {
+    for (const path of ['/package.json', '/scripts/qa.mjs', '/.git/config', '/challenges.mjs', '/replay.mjs']) {
       assert.equal((await fetch(`${server.url}${path}`)).status, 404);
     }
     assert.equal((await fetch(server.url, { method: 'POST' })).status, 405);
