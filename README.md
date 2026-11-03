@@ -8,7 +8,8 @@ shell is preserved. With `all`, the local high-scores/settings panel saves the t
 ten completed scores and sound/difficulty preferences across reloads. Preferences
 do not yet change audio or difficulty. Corrupt records reset safely; blocked or full
 storage falls back to session memory. No storage is accessed with flags disabled.
-Challenges and replay remain unavailable.
+Challenges and replay UI remain unavailable. Replay recording/validation/playback
+is available as an explicit pure-module API; see [CONTRACTS.md](CONTRACTS.md).
 
 ## Run locally
 
@@ -24,7 +25,7 @@ Set `PORT` to choose another port. Stop with Ctrl-C. There is no build step or
 runtime network dependency; the browser loads only local HTML, CSS, and ES modules.
 The app can also be hosted on a static server serving this directory's public
 assets (`index.html`, `styles.css`, `app.mjs`, `features.mjs`, `gameplay.mjs`,
-`controller.mjs`, `game.mjs`, `storage.mjs`).
+`controller.mjs`, `game.mjs`, `storage.mjs`, `replay.mjs`).
 
 ## Validate
 
@@ -47,7 +48,9 @@ reversal protection, pause/resume, game over, repeated restarts, touch target si
 keyboard focus, no horizontal overflow, no browser errors/failed assets, and no
 remote runtime requests. It also checks saved scores/settings across reload,
 exactly-once completion recording, disabled storage isolation, and storage failure
-recovery. A controlled browser clock makes movement checks deterministic. It writes full-page
+recovery. Replay QA checks the explicitly imported module reproduces a scored
+terminal run and rejects invalid records; the shell never imports it in either
+profile. A controlled browser clock makes movement checks deterministic. It writes full-page
 screenshots to `artifacts/qa/{none,all}/{desktop,mobile}.png` and closes both browser
 and server on success or failure. These generated files are ignored by Git.
 
@@ -70,8 +73,9 @@ means all flags default off. Unknown profiles never enable a feature. For module
 callers, `resolveFeatures({ gameplay: true })` supports individual boolean overrides.
 The four known flags are `gameplay`, `savedProgress`, `challenges`, and `replay`.
 Requests do not imply readiness: only gameplay and savedProgress are complete and
-can activate. Challenges and replay stay off even under `all`, without importing
-absent modules. There is no feature-flag persistence.
+can activate in the UI. Challenges and replay UI stay off even under `all`,
+without importing their modules. The completed replay API is explicit module opt-in
+only; browser recording/playback controls remain for a later integration. There is no feature-flag persistence.
 
 ## Files and future seams
 
@@ -81,13 +85,15 @@ absent modules. There is no feature-flag persistence.
 - `controller.mjs`: single simulation clock and per-tick input latch.
 - `storage.mjs`: bounded version-1 scores/settings records, injected storage and
   graceful in-memory recovery; no saved game snapshots.
+- `replay.mjs`: pure immutable input recording, bounded version-1 JSON validation
+  and deterministic engine playback, tested in `test/replay.test.mjs`.
 - `features.mjs`: pure immutable flag resolution, tested in `test/`.
 - `game.mjs`: pure seeded Snake transitions, covered by `test/game.test.mjs`;
   loaded only for enabled gameplay. Exports `newGame`, `turn`, `tick`, `togglePause`,
   and `restart`.
 - `scripts/`: local server and browser QA lifecycle.
 - [CONTRACTS.md](CONTRACTS.md): concrete engine options, state, PRNG and transition
-  rules, persistence schema, and reserved seams for challenges and replay.
+  rules, persistence/replay schemas and APIs, and the reserved challenge seam.
 
 Later capabilities must be completed and tested independently before wiring them
 into the shell. Keep unrelated unfinished features disabled.

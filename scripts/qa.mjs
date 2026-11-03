@@ -126,8 +126,10 @@ try {
     await page.clock.pauseAt(new Date());
     const errors = [];
     const engineRequests = [];
+    const replayRequests = [];
     page.on('request', request => {
       if (new URL(request.url()).pathname === '/game.mjs') engineRequests.push(request.url());
+      if (new URL(request.url()).pathname === '/replay.mjs') replayRequests.push(request.url());
     });
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => {
@@ -147,6 +149,7 @@ try {
     // Check the actual default as well as explicit override and unknown-name safety.
     for (const query of ['', `?features=${profile}`, '?features=unknown']) {
       engineRequests.length = 0;
+      replayRequests.length = 0;
       await page.goto(`${server.url}/${query}`, { waitUntil: 'networkidle' });
       await page.waitForFunction(() => document.documentElement.dataset.ready === 'true');
       assert.equal(await page.title(), 'Snake Arcade');
@@ -167,6 +170,7 @@ try {
       assert.deepEqual(await page.evaluate(() => JSON.parse(document.documentElement.dataset.features)), resolveFeatures(query === `?features=${profile}` ? profile : undefined));
       assert.deepEqual(await page.evaluate(() => JSON.parse(document.documentElement.dataset.availableFeatures)), resolveFeatures({ gameplay: enabled, savedProgress: enabled }));
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: horizontal overflow`);
+      assert.deepEqual(replayRequests, [], 'Replay UI integration remains off, even under all');
       assert.deepEqual(errors, [], `${name}: browser errors`);
       if (query === `?features=${profile}`) {
         const path = join(artifacts, `${name}.png`);
@@ -174,6 +178,30 @@ try {
         console.log(`Screenshot: ${path}`);
       }
     }
+    await page.close();
+  }
+  // Explicit module opt-in only: no UI, storage, timers or network services needed.
+  {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/?features=${profile}`, { waitUntil: 'networkidle' });
+    const result = await page.evaluate(async () => {
+      const replay = await import('./replay.mjs');
+      let session = replay.createRecording();
+      session = replay.recordDirection(session, 'up');
+      for (let i = 0; i < 6; i++) session = replay.stepRecording(session);
+      session = replay.recordDirection(session, 'right');
+      while (session.state.status === 'running') session = replay.stepRecording(session);
+      const raw = replay.finishRecording(session);
+      const played = replay.playbackReplay(raw);
+      return {
+        ok: played.ok,
+        identical: JSON.stringify(played.state) === JSON.stringify(session.state),
+        score: played.state?.score, status: played.state?.status,
+        malformed: replay.playbackReplay('{').code,
+        oversized: replay.validateReplay(' '.repeat(replay.MAX_RECORD_LENGTH + 1)).code,
+      };
+    });
+    assert.deepEqual(result, { ok: true, identical: true, score: 1, status: 'gameover', malformed: 'malformed', oversized: 'oversized' });
     await page.close();
   }
   // Exercise the independent module seam: gameplay on, savedProgress off.
