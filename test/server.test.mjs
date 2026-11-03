@@ -5,7 +5,7 @@ import { startServer } from '../scripts/server.mjs';
 test('static server serves ES modules and only public assets; closes cleanly', async () => {
   const server = await startServer();
   try {
-    for (const [path, type] of [['/', 'text/html'], ['/styles.css', 'text/css'], ['/app.mjs', 'text/javascript'], ['/features.mjs', 'text/javascript'], ['/game.mjs', 'text/javascript'], ['/controller.mjs', 'text/javascript'], ['/gameplay.mjs', 'text/javascript'], ['/storage.mjs', 'text/javascript'], ['/replay.mjs', 'text/javascript']]) {
+    for (const [path, type] of [['/', 'text/html'], ['/styles.css', 'text/css'], ['/app.mjs', 'text/javascript'], ['/features.mjs', 'text/javascript'], ['/game.mjs', 'text/javascript'], ['/board.mjs', 'text/javascript'], ['/controller.mjs', 'text/javascript'], ['/gameplay.mjs', 'text/javascript'], ['/storage.mjs', 'text/javascript'], ['/replay.mjs', 'text/javascript']]) {
       const response = await fetch(`${server.url}${path}`);
       assert.equal(response.status, 200);
       assert.ok(response.headers.get('content-type').startsWith(type));

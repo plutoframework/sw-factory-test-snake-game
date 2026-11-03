@@ -128,7 +128,9 @@ try {
     const engineRequests = [];
     const replayRequests = [];
     page.on('request', request => {
-      if (new URL(request.url()).pathname === '/game.mjs') engineRequests.push(request.url());
+      if (['/game.mjs', '/challenges.mjs', '/board.mjs'].includes(new URL(request.url()).pathname)) {
+        engineRequests.push(request.url());
+      }
       if (new URL(request.url()).pathname === '/replay.mjs') replayRequests.push(request.url());
     });
     page.on('pageerror', error => errors.push(error.message));
@@ -156,8 +158,11 @@ try {
       assert.equal(await page.getByRole('heading', { level: 1 }).textContent(), 'Small snake.Big ambitions.');
       const enabled = profile === 'all' && query === '?features=all';
       assert.ok(await page.getByRole('heading', { name: 'On the drawing board' }).isVisible());
+      assert.ok(!engineRequests.some(url => new URL(url).pathname === '/challenges.mjs'),
+        'Challenge API must not be wired into the shell');
       if (enabled) {
-        assert.equal(engineRequests.length, 1, 'Enabled gameplay loads the existing engine');
+        assert.deepEqual(engineRequests.map(url => new URL(url).pathname).sort(),
+          ['/board.mjs', '/game.mjs'], 'Enabled gameplay loads the classic engine and topology helper only');
         await checkGameplay(page, name);
         await checkPersistence(page);
       } else {

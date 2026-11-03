@@ -25,7 +25,7 @@ Set `PORT` to choose another port. Stop with Ctrl-C. There is no build step or
 runtime network dependency; the browser loads only local HTML, CSS, and ES modules.
 The app can also be hosted on a static server serving this directory's public
 assets (`index.html`, `styles.css`, `app.mjs`, `features.mjs`, `gameplay.mjs`,
-`controller.mjs`, `game.mjs`, `storage.mjs`, `replay.mjs`).
+`controller.mjs`, `game.mjs`, `board.mjs`, `storage.mjs`, `replay.mjs`).
 
 ## Validate
 
@@ -72,10 +72,10 @@ Open `/?features=none` or `/?features=all` to explicitly request a profile. No q
 means all flags default off. Unknown profiles never enable a feature. For module
 callers, `resolveFeatures({ gameplay: true })` supports individual boolean overrides.
 The four known flags are `gameplay`, `savedProgress`, `challenges`, and `replay`.
-Requests do not imply readiness: only gameplay and savedProgress are complete and
-can activate in the UI. Challenges and replay UI stay off even under `all`,
-without importing their modules. The completed replay API is explicit module opt-in
-only; browser recording/playback controls remain for a later integration. There is no feature-flag persistence.
+Requests do not imply UI readiness: only gameplay and savedProgress can activate
+in the browser. Challenge and replay UI stay off even under `all`; their completed
+standalone APIs are explicit module opt-ins, not imported by the shell. Browser
+controls remain for a later integration. There is no feature-flag persistence.
 
 ## Files and future seams
 
@@ -90,10 +90,14 @@ only; browser recording/playback controls remain for a later integration. There 
 - `features.mjs`: pure immutable flag resolution, tested in `test/`.
 - `game.mjs`: pure seeded Snake transitions, covered by `test/game.test.mjs`;
   loaded only for enabled gameplay. Exports `newGame`, `turn`, `tick`, `togglePause`,
-  and `restart`.
+  `restart`, and the `getTickMs` difficulty scheduling hint.
+- `challenges.mjs`: pure `createChallenge(options)` returns seeded, connected
+  obstacle layouts for `newGame(config)`. Difficulty controls obstacle density
+  and score-based speed progression. This API is opt-in; no challenge UI is wired.
+- `board.mjs`: internal bounded topology validation helper.
 - `scripts/`: local server and browser QA lifecycle.
 - [CONTRACTS.md](CONTRACTS.md): concrete engine options, state, PRNG and transition
-  rules, persistence/replay schemas and APIs, and the reserved challenge seam.
+  rules, challenge configuration API, and persistence/replay schemas and APIs.
 
 Later capabilities must be completed and tested independently before wiring them
 into the shell. Keep unrelated unfinished features disabled.
