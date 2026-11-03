@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#2146d9">
+    <meta name="description" content="Snake Arcade. A classic, getting a new home. Gameplay coming soon.">
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="styles.css">
+    <title>Snake Arcade</title>
+    <script type="module" src="app.mjs"></script>
+  </head>
+  <body>
+    <header class="masthead"><a class="brand" href="./" aria-label="Snake Arcade home"><span aria-hidden="true" class="brand-mark">S</span> Snake Arcade</a><span class="edition">The classics never leave.</span></header>
+    <main>
+      <section class="cabinet" aria-labelledby="title">
+        <div class="intro">
+          <p class="notice"><span aria-hidden="true"></span> Cabinet under construction</p>
+          <h1 id="title">Small snake.<br>Big ambitions.</h1>
+          <p class="description">An old-school favorite, with a fresh coat of cobalt. We’re setting the stage for your next high score.</p>
+          <p class="availability">Gameplay is coming soon.</p>
+          <p class="subtext">No coins needed. Just a little patience.</p>
+        </div>
+        <div class="poster" role="img" aria-label="Decorative arcade artwork: an orange winding path on an ivory grid. Not a playable game.">
+          <div class="poster-label">Snake / Arcade</div>
+          <svg viewBox="0 0 400 400" aria-hidden="true">
+            <defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" stroke-width="1"/></pattern></defs>
+            <rect width="400" height="400" fill="url(#grid)" opacity=".17"/>
+            <path d="M80 320V200H200V280H320V80H200V120" fill="none" stroke="#fa6335" stroke-width="39" stroke-linejoin="round"/>
+            <path d="M190 116h5m10 0h5" stroke="#142460" stroke-width="6"/>
+          </svg>
+          <div class="poster-foot"><span>A new home for a classic.</span><span aria-hidden="true">↗</span></div>
+        </div>
+      </section>
+      <section class="up-next" aria-labelledby="future-title">
+        <h2 id="future-title">On the drawing board</h2>
+        <ul><li>Classic gameplay</li><li>Saved progress</li><li>Challenges</li><li>Replays</li></ul>
+        <p>These features aren’t available yet.</p>
+      </section>
+    </main>
+    <footer><span>Snake Arcade</span><span id="build-status" role="status">Shell preview · Gameplay unavailable</span></footer>
+  </body>
+</html>
