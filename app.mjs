@@ -3,7 +3,7 @@ import { resolveFeatures } from './features.mjs';
 const profile = new URLSearchParams(window.location.search).get('features');
 const requestedFeatures = resolveFeatures(profile ?? undefined);
 
-// Requests are not readiness: no future module exists in this increment.
+// Requests are not readiness: the standalone engine has no browser adapter yet.
 // Later increments must wire only independently completed capabilities here.
 const availableFeatures = resolveFeatures();
 document.documentElement.dataset.features = JSON.stringify(requestedFeatures);

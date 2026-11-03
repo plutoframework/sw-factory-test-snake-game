@@ -1,8 +1,9 @@
 # Snake Arcade
 
 A dependency-free static browser shell in cobalt, ivory, and orange. This is the
-foundation increment: **no game engine or gameplay UI is included**. The winding
-path is decorative artwork, not a playable board. All future capabilities are
+engine increment: a deterministic standalone engine is included, but **no gameplay
+UI is wired yet**. The winding path is decorative artwork, not a playable board.
+All browser gameplay and future capabilities are
 unavailable, including when explicitly requested by feature flags.
 
 ## Run locally
@@ -68,9 +69,12 @@ modules. There is no feature persistence.
 - `index.html`, `styles.css`: responsive, semantic arcade shell.
 - `app.mjs`: flag-request wiring only, no gameplay.
 - `features.mjs`: pure immutable flag resolution, tested in `test/`.
+- `game.mjs`: pure seeded Snake transitions, covered by `test/game.test.mjs`;
+  not imported by the shell. Exports `newGame`, `turn`, `tick`, `togglePause`,
+  and `restart`.
 - `scripts/`: local server and browser QA lifecycle.
-- [CONTRACTS.md](CONTRACTS.md): stable module seams for the future immutable engine,
-  storage, challenges, and replay. Those modules are reserved, not implemented.
+- [CONTRACTS.md](CONTRACTS.md): concrete engine options, state, PRNG and transition
+  rules; reserved seams for storage, challenges, and replay (not implemented).
 
 Later capabilities must be completed and tested independently before wiring them
 into the shell. Keep unrelated unfinished features disabled.
