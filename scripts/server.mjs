@@ -9,7 +9,7 @@ const files = new Map([
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/app.mjs', ['app.mjs', 'text/javascript; charset=utf-8']],
   ['/features.mjs', ['features.mjs', 'text/javascript; charset=utf-8']],
-  ...['game.mjs', 'board.mjs', 'controller.mjs', 'gameplay.mjs', 'storage.mjs', 'replay.mjs'].map(file => [`/${file}`, [file, 'text/javascript; charset=utf-8']]),
+  ...['game.mjs', 'board.mjs', 'controller.mjs', 'gameplay.mjs', 'storage.mjs', 'replay.mjs', 'challenges.mjs'].map(file => [`/${file}`, [file, 'text/javascript; charset=utf-8']]),
 ]);
 
 /** A local static server with an explicit public-file allowlist. */

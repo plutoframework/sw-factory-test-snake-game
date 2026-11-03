@@ -75,7 +75,7 @@ test('bounded validation rejects malformed, oversized and incompatible payloads 
   };
   for (const raw of ['{', 'null', '[]', '42']) check(raw, 'malformed');
   assert.equal(validateReplay(valid).code, 'malformed', 'Object inputs are not an untrusted boundary');
-  check({ ...valid, version: 2 }, 'unsupported');
+  check({ ...valid, version: 99 }, 'unsupported');
   check(' '.repeat(MAX_RECORD_LENGTH + 1), 'oversized');
   check({ ...valid, ticks: MAX_TICKS + 1 }, 'oversized');
   check({ ...valid, inputs: Array(MAX_INPUTS + 1).fill({ tick: 0, direction: 'up' }) }, 'oversized');
