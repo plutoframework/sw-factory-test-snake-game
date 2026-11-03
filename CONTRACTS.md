@@ -81,7 +81,7 @@ scheduling, not the engine.
 
 `createChallenge({ width = 20, height = 20, seed = 1, difficulty = 'normal',
 obstacleCount } = {})` returns a deeply frozen engine options object:
-`{ width, height, seed, difficulty, obstacles: [{ x, y }, ...] }`.
+`{ width, height, seed, difficulty, obstacles: [{ x, y }, ...], safeStart: true }`.
 Pass it directly to `newGame(config)`. No global RNG, flags, clock, or browser
 state is read. Identical options produce identical layouts; config plus the same
 ordered engine operations reproduces the game. Restart preserves all options.
@@ -100,19 +100,32 @@ The result may have **fewer obstacles than requested**, especially on tiny or
 saturated boards: safety takes priority. Obstacles are returned row-major.
 Work is bounded by O(area²) time and O(area) space; there is no retry loop.
 Food uses the engine's separate seed-initialized PRNG, excluding obstacles.
-Connectivity prevents food in permanently isolated regions; it does not promise
-survival after player decisions or prevent the moving body from blocking routes.
+Every generated configuration enables `safeStart`: initial food is selected only
+from cells reachable from the head while treating the entire initial body as
+blocked. A bounded flood fill (O(area) time/space) establishes a simple path to
+that food. Following that path with legal turns cannot hit the initial body or
+its own non-repeating path. The protected forward cell ensures the candidate set
+is nonempty, even for one-row boards or obstacle-created dead-end corridors.
+Static connectivity alone is not a playability proof; the safe-start filter
+provides that additional first-food guarantee. Later food placement excludes only
+snake and obstacles as usual. Survival after player decisions or subsequent food
+is not guaranteed, and the moving body can still block routes.
 
 ### Opt-in engine configuration
 
-`newGame` also accepts `obstacles` and `difficulty = 'classic'`. Obstacles must be
+`newGame` also accepts `obstacles`, `difficulty = 'classic'`, and the literal
+boolean `safeStart = false`. With `safeStart: true`, only initial food placement
+is restricted to body-avoiding reachable free cells, still enumerated row-major
+and using exactly one normal LCG step. States record `safeStart: true`, and
+restart preserves it. False/omitted safeStart preserves classic placement and
+state shape. Non-boolean values throw `RangeError`. Obstacles must be
 an array of unique in-bounds integer cells, excluding the initial snake and its
 first forward step. All non-obstacle cells must be connected. Invalid layouts
 throw `RangeError`. Food excludes obstacles; collision with an obstacle ends the
 game without moving the last valid board. Filling all non-obstacle cells ends
 with null food. Caller-owned obstacles are copied, never frozen or mutated.
 Opted-in states include deeply frozen `obstacles` and `difficulty` fields.
-Omitting both options preserves the original classic state shape and PRNG results.
+Omitting these options preserves the original classic state shape and PRNG results.
 
 `getTickMs(state)` is a pure scheduling hint, not a timer. `tick` always advances
 one cell. Speeds in milliseconds are:

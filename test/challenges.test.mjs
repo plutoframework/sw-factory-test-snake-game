@@ -5,6 +5,38 @@ import { newGame, tick, turn, restart, togglePause, getTickMs } from '../game.mj
 import { resolveFeatures } from '../features.mjs';
 
 const key = ({ x, y }) => `${x},${y}`;
+
+// Independent constructive proof: replay a simple path avoiding the initial body.
+function eatFirstFood(initial) {
+  const blocked = new Set([...(initial.obstacles ?? []), ...initial.snake.slice(1)].map(key));
+  const queue = [initial.snake[0]];
+  const parents = new Map([[key(queue[0]), null]]);
+  for (let i = 0; i < queue.length && !parents.has(key(initial.food)); i++) {
+    const cell = queue[i];
+    for (const [direction, dx, dy] of [['right', 1, 0], ['up', 0, -1],
+      ['down', 0, 1], ['left', -1, 0]]) {
+      const next = { x: cell.x + dx, y: cell.y + dy };
+      if (next.x < 0 || next.y < 0 || next.x >= initial.width || next.y >= initial.height ||
+          blocked.has(key(next)) || parents.has(key(next))) continue;
+      parents.set(key(next), { previous: key(cell), direction });
+      queue.push(next);
+    }
+  }
+  assert.ok(parents.has(key(initial.food)), 'first food must have a body-avoiding route');
+  const directions = [];
+  for (let at = key(initial.food); parents.get(at); at = parents.get(at).previous) {
+    directions.push(parents.get(at).direction);
+  }
+  let state = initial;
+  for (const direction of directions.reverse()) {
+    const before = state.snake[0];
+    state = tick(turn(state, direction));
+    assert.notDeepEqual(state.snake[0], before, 'witness path must not collide');
+  }
+  assert.equal(state.score, 1, 'witness path must eat the first food');
+  return state;
+}
+
 function checkBoard(config) {
   const state = newGame(config);
   const blocked = new Set(config.obstacles.map(key));
@@ -25,6 +57,7 @@ function checkBoard(config) {
     }
   }
   assert.equal(reached.size + blocked.size, state.width * state.height);
+  eatFirstFood(state);
 }
 
 test('seeded layouts are deterministic, safe, connected, and bounded even when saturated', () => {
@@ -41,6 +74,34 @@ test('seeded layouts are deterministic, safe, connected, and bounded even when s
   }
   checkBoard(createChallenge({ width: 64, height: 64, obstacleCount: 4096 }));
   assert.notDeepEqual(createChallenge({ seed: 1 }), createChallenge({ seed: 999 }));
+});
+
+test('safe starts resolve one-row and obstacle-created traps without changing classic placement', () => {
+  const options = { width: 8, height: 1, seed: 1, obstacleCount: 0 };
+  assert.deepEqual(newGame(options).food, { x: 1, y: 0 }, 'classic remains compatible');
+  const challenge = newGame(createChallenge(options));
+  assert.equal(challenge.safeStart, true);
+  assert.ok(challenge.food.x > challenge.snake[0].x);
+  eatFirstFood(challenge);
+  assert.deepEqual(restart(eatFirstFood(challenge)), challenge);
+
+  // A connected board whose head is trapped in a right-facing dead-end corridor.
+  const obstacles = [4, 5, 6, 7].flatMap(x => [{ x, y: 0 }, { x, y: 2 }]);
+  const trap = { width: 8, height: 3, seed: 1, obstacles };
+  assert.deepEqual(newGame(trap).food, { x: 3, y: 0 });
+  const safe = newGame({ ...trap, safeStart: true });
+  assert.ok(safe.food.x >= 5 && safe.food.y === 1);
+  eatFirstFood(safe);
+  assert.deepEqual(restart(safe), safe);
+
+  const generatedTrap = createChallenge({ width: 8, height: 4, seed: 1, obstacleCount: 20 });
+  assert.deepEqual(newGame({ ...generatedTrap, safeStart: false }).food, { x: 1, y: 1 });
+  // Without safe placement, the snake body seals off that food from the head.
+  assert.throws(() => eatFirstFood(newGame({ ...generatedTrap, safeStart: false })),
+    /first food must have a body-avoiding route/);
+  eatFirstFood(newGame(generatedTrap));
+  assert.throws(() => newGame({ safeStart: 'true' }), RangeError);
+  assert.deepEqual(newGame({ safeStart: false }), newGame());
 });
 
 test('configuration validation rejects unsafe or unbounded requests', () => {

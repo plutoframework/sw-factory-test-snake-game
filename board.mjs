@@ -1,5 +1,5 @@
-// Internal topology helper. Snake cells are traversable: only permanent walls count.
-export function isConnected(width, height, blocked, start) {
+// Internal bounded flood fill. The start is included even when in blocked.
+export function reachableCells(width, height, blocked, start) {
   const seen = new Uint8Array(width * height);
   const queue = [start];
   seen[start] = 1;
@@ -14,5 +14,10 @@ export function isConnected(width, height, blocked, start) {
       }
     }
   }
-  return queue.length === width * height - blocked.size;
+  return queue;
+}
+
+// Static topology: snake cells are traversable, only permanent walls count.
+export function isConnected(width, height, blocked, start) {
+  return reachableCells(width, height, blocked, start).length === width * height - blocked.size;
 }

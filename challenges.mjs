@@ -35,5 +35,6 @@ export function createChallenge({ width = 20, height = 20, seed = 1,
   }
   const obstacles = Object.freeze([...blocked].sort((a, b) => a - b)
     .map(cell => Object.freeze({ x: cell % width, y: Math.floor(cell / width) })));
-  return Object.freeze({ width, height, seed, difficulty, obstacles });
+  // Only the initial placement is restricted; later food uses the normal PRNG.
+  return Object.freeze({ width, height, seed, difficulty, obstacles, safeStart: true });
 }

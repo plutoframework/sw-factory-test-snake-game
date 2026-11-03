@@ -1,5 +1,5 @@
 // Pure deterministic engine. The browser adapter owns input and scheduling.
-import { isConnected } from './board.mjs';
+import { isConnected, reachableCells } from './board.mjs';
 
 const speeds = Object.freeze({
   classic: [150, 150, 0], easy: [200, 110, 5], normal: [150, 70, 8], hard: [100, 45, 10],
@@ -25,9 +25,19 @@ function immutable(state) {
   });
 }
 
-function placeFood(state) {
+function placeFood(state, safeStart = false) {
   const occupied = new Set(state.snake.map(({ x, y }) => y * state.width + x));
   for (const { x, y } of state.obstacles ?? []) occupied.add(y * state.width + x);
+  if (safeStart) {
+    // A simple path avoiding the entire initial body is a legal first-food route.
+    // Each cell is visited once; no unbounded search over snake configurations.
+    const head = state.snake[0];
+    const reachable = new Set(reachableCells(state.width, state.height, occupied,
+      head.y * state.width + head.x));
+    for (let cell = 0; cell < state.width * state.height; cell++) {
+      if (!reachable.has(cell)) occupied.add(cell);
+    }
+  }
   const freeCount = state.width * state.height - occupied.size;
   if (freeCount === 0) return { ...state, food: null, status: 'gameover' };
   // One unsigned 32-bit LCG step per placement, including the initial food.
@@ -40,7 +50,8 @@ function placeFood(state) {
   }
 }
 
-export function newGame({ width = 20, height = 20, seed = 1, obstacles, difficulty = 'classic' } = {}) {
+export function newGame({ width = 20, height = 20, seed = 1, obstacles,
+  difficulty = 'classic', safeStart = false } = {}) {
   if (!Number.isSafeInteger(width) || width < 4 ||
       !Number.isSafeInteger(height) || height < 1 || width * height > 1_000_000) {
     throw new RangeError('Board requires width >= 4, height >= 1, and at most 1000000 cells');
@@ -48,6 +59,7 @@ export function newGame({ width = 20, height = 20, seed = 1, obstacles, difficul
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
     throw new RangeError('Seed must be an unsigned 32-bit integer');
   }
+  if (typeof safeStart !== 'boolean') throw new RangeError('safeStart must be a boolean');
   const x = Math.max(2, Math.floor(width / 2));
   const y = Math.floor(height / 2);
   if (!Object.hasOwn(speeds, difficulty)) throw new RangeError('Unknown difficulty');
@@ -70,10 +82,11 @@ export function newGame({ width = 20, height = 20, seed = 1, obstacles, difficul
   }
   return immutable(placeFood({
     width, height, seed, rngState: seed,
+    ...(safeStart ? { safeStart: true } : {}),
     ...(obstacles !== undefined || difficulty !== 'classic' ? { obstacles: obstacles ?? [], difficulty } : {}),
     snake: [{ x, y }, { x: x - 1, y }, { x: x - 2, y }],
     direction: 'right', score: 0, status: 'running', food: null,
-  }));
+  }, safeStart));
 }
 
 export function turn(state, direction) {
@@ -104,5 +117,5 @@ export function togglePause(state) {
 
 export function restart(state) {
   return newGame({ width: state.width, height: state.height, seed: state.seed,
-    obstacles: state.obstacles, difficulty: state.difficulty });
+    obstacles: state.obstacles, difficulty: state.difficulty, safeStart: state.safeStart });
 }
