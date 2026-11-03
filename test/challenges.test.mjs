@@ -180,7 +180,7 @@ test('configuration/state immutability, restart and seed plus inputs replay iden
 });
 
 test('flags never opt the classic engine into challenges', () => {
-  assert.equal(resolveFeatures().challenges, false);
+  assert.equal(resolveFeatures().challenges, true);
   for (const profile of ['none', 'all']) {
     assert.equal(resolveFeatures(profile).challenges, profile === 'all');
     assert.equal(newGame().obstacles, undefined);

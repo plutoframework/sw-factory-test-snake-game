@@ -1,25 +1,13 @@
 # Snake Arcade
 
-A dependency-free static browser arcade in cobalt, ivory, and orange. Open
-`/?features=all` for playable Snake: arrows/WASD or touch buttons steer, Space or
-Pause pauses, and Restart starts fresh. Eat orange food to score; walls and your
-own body end the game. With no flag (or `?features=none`), the original decorative
-shell is preserved. With `all`, the local high-scores/settings panel saves the top
-ten completed scores and sound/difficulty preferences across reloads. Choose a
-seeded challenge and easy/normal/hard difficulty for deterministic walls and speed
-progression, or keep the classic board. Start selected game applies the selection;
-Restart repeats the active board. Saved difficulty selects the next initial board;
-seeds are not saved. Sound remains a preference only. Corrupt records reset safely;
-blocked or full storage falls back to session memory. Disabled flags never access storage.
-Replay last completed run is watch-only, with pause/resume and an explicit exit to
-a fresh live game. Replays never post scores and are not persisted; the button is
-unavailable until a completed, valid run has been recorded this session. Very long
-runs can exceed the recording budget without interrupting gameplay.
-See [CONTRACTS.md](CONTRACTS.md) for module APIs and replay versions.
+A dependency-free static browser arcade in cobalt, ivory, and orange. **Open the
+home page to play**: classic Snake, local high scores/settings, seeded challenges,
+and watch-only replay are finished and enabled by default. No account, build step,
+remote fonts, or runtime network services are required.
 
 ## Run locally
 
-Use Node.js 22 or newer and npm.
+Use Node.js 22 or newer and npm:
 
 ```sh
 npm ci
@@ -27,87 +15,153 @@ npm start
 # Visit http://127.0.0.1:3000
 ```
 
-Set `PORT` to choose another port. Stop with Ctrl-C. There is no build step or
-runtime network dependency; the browser loads only local HTML, CSS, and ES modules.
-The app can also be hosted on a static server serving this directory's public
-assets (`index.html`, `styles.css`, `app.mjs`, `features.mjs`, `gameplay.mjs`,
-`controller.mjs`, `game.mjs`, `board.mjs`, `storage.mjs`, `challenges.mjs`, `replay.mjs`).
+Set `PORT` to choose another port. Stop with Ctrl-C. Alternatively serve this
+directory with a static HTTP server (for example `python3 -m http.server 3000`).
+Opening `index.html` directly via `file://` is not supported by browser ES modules.
+Static hosting needs `index.html`, `styles.css`, and the root `.mjs` modules;
+`node_modules`, tests and scripts are not browser assets. The supplied development
+server binds localhost and serves only an explicit public asset allowlist.
+
+## Play and controls
+
+- Arrows or WASD steer. On mobile, use the four direction buttons below the board.
+  Only one accepted turn per simulation tick is allowed; direct reversal is ignored.
+- Eat orange food for one point and one extra body cell. Board edges, your body,
+  and gray challenge walls end the game. Filling the board also completes a run.
+- Space or **Pause / Resume** pauses. Leaving the tab pauses automatically;
+  returning does not resume until you choose to. Key repeats are ignored.
+- **Restart** begins the active board again with the same seed and difficulty.
+  It does not save an unfinished score. Reload starts a fresh game, not a snapshot.
+- Tab / Shift-Tab reach controls with visible focus; Enter / Space activate buttons.
+  Seed and select fields retain native keyboard editing rather than steering.
+- Sound is a saved preference only: no audio capability is implemented.
+
+### Seeded challenges
+
+Select **Seeded challenge**, an unsigned 32-bit seed (`0`–`4294967295`), and
+easy/normal/hard difficulty, then **Start selected game**. Equal seed, difficulty
+and inputs reproduce the same walls, food and score. Easy starts slower with fewer
+walls; hard starts faster with more walls. Speed increases every five food, with a
+minimum interval. The generator protects the starting snake and a route to the
+first food; later survival is up to you. Select **Classic** for a wall-free board.
+Changing selection does not affect an active run until you start it. Restart
+repeats the active configuration, not an unapplied selection. Saved difficulty
+selects the next initial board; seed always starts at 1 after reload.
+
+### Replay
+
+Finish a live run, then choose **Replay last completed run**. Playback is visibly
+watch-only: live steering is disabled, Pause / Resume still works, and scores are
+never posted again. **Exit replay · fresh game** returns to live play. The last
+valid completed recording remains available until reload; replays and seeds are
+not persisted. Runs exceeding the recording budget remain playable but cannot
+replace the last completed replay. There is no browser import/export UI. Library
+users can record, validate and play versioned JSON with the pure APIs in
+[CONTRACTS.md](CONTRACTS.md); incompatible, malformed and oversized inputs are
+rejected before playback.
+
+## Local storage and privacy
+
+The key `snake-arcade.progress` stores a bounded version-1 JSON record:
+
+```json
+{"version":1,"scores":[12,3,0],"settings":{"sound":false,"difficulty":"classic"}}
+```
+
+Only the top ten completed live scores (descending, including ties/zero) and
+sound/difficulty preferences are stored. Scores are integers 0–1,000,000;
+difficulty is `classic`, `easy`, `normal`, or `hard`. No snapshots, seeds, replays,
+identity or flags are stored. Records over 2048 characters, corrupt JSON, unknown
+versions or invalid fields reset safely to defaults; the next valid update can
+replace them. Blocked/full/unavailable storage switches to session memory without
+interrupting play or repeatedly retrying. Clear this key in browser developer
+tools to reset progress; clearing site data also works. Explicit disabled mode
+never acquires, reads or writes local storage. There is no server-side storage.
+
+## Feature controls
+
+| URL | Behavior |
+| --- | --- |
+| `/` | All four completed capabilities enabled |
+| `/?features=all` | Explicitly enable all four |
+| `/?features=none` | Decorative shell only; no gameplay modules or storage access |
+| `/?features=unknown` (or empty value) | Safe disabled fallback |
+
+The first query value wins if `features` occurs more than once. No flag is saved.
+`SNAKE_FEATURES` selects a **QA URL profile**, not a browser environment variable;
+it does not change what a normal visitor sees.
+
+For module consumers, `resolveFeatures()` enables the finished defaults.
+Explicit object configuration retains opt-in semantics: `resolveFeatures({
+gameplay: true })` enables only gameplay; omitted keys stay false. Only own literal
+boolean properties are accepted; unknown keys and invalid values are ignored.
+Known flags are `gameplay`, `savedProgress`, `challenges`, and `replay`.
+Challenge/replay UI additionally requires gameplay, but neither requires saved
+progress. `mountGameplay({ challenges, replay, progress })` is the independent
+integration seam. Future unfinished capabilities must remain disabled.
 
 ## Validate
 
-Playwright **1.64.1** is the exact locked development dependency.
+Playwright **1.64.1** is the exact locked development dependency:
 
 ```sh
 npm ci
 npx playwright install --with-deps chromium
+npm test
+npm run qa
 SNAKE_FEATURES=none npm test
 SNAKE_FEATURES=none npm run qa
 SNAKE_FEATURES=all npm test
 SNAKE_FEATURES=all npm run qa
 ```
 
-`npm test` uses Node's built-in test runner. `npm run qa` starts its own ephemeral
-localhost server, launches headless Chromium, and checks the default page, selected
-profile, and unknown-profile fallback at 1440px desktop and 390px mobile widths.
-It verifies branding, the disabled shell, enabled gameplay controls, scoring,
-reversal protection, pause/resume, game over, repeated restarts, touch target size,
-keyboard focus, no horizontal overflow, no browser errors/failed assets, and no
-remote runtime requests. It also checks saved scores/settings across reload,
-exactly-once completion recording, disabled storage isolation, and storage failure
-recovery. Integration QA covers saved challenge difficulty, seeded speed, replay
-pause/resume, blocked live steering during playback, score isolation, replay exit,
-keyboard button activation, input validation, and independent challenge/replay flags.
-Pure replay QA also reproduces a scored terminal run and rejects invalid records.
-A controlled browser clock makes movement checks deterministic. It writes full-page
-screenshots to `artifacts/qa/{none,all}/{desktop,mobile}.png` and closes both browser
-and server on success or failure. These generated files are ignored by Git.
+`npm test` uses Node's built-in runner for engine API compatibility, immutable
+transitions, PRNG, walls/body/full-board cases, scheduling/input latches,
+persistence/recovery, connected seeded challenges, replay validation/budgets, and
+cross-module integration. Engine/library APIs are independent of browser flags.
 
-Optional QA environment settings:
+`npm run qa` owns an ephemeral localhost server and headless Chromium, closing both
+in `finally`. A controlled browser clock makes movement deterministic. Every run
+checks normal defaults, its explicit profile, unknown/duplicate profiles, desktop
+1440px and touch/mobile 390px, plus 320px reduced-motion overflow. Checks include
+scoring, reversal/input throttling, pause/resume/background pause, repeated
+restarts, game over, keyboard focus/native activation, accessible names, touch
+target sizes, no horizontal overflow, no browser errors/failed assets, and no
+remote runtime dependencies. Persistence scenarios verify exactly-once completion,
+reload, corrupt/unknown records, blocked/full storage, and disabled isolation.
+Integration covers independent flags, saved challenge difficulty, seeded speed,
+input validation, editing without steering, replay pause/exit/score isolation,
+and pure playback of a scored terminal run with invalid-record rejection.
+
+Full-page `desktop.png` and `mobile.png` screenshots are emitted under
+`artifacts/qa/{default,none,all}/` (ignored by Git). Enabled screenshots show a paused
+seeded challenge after integration tests; `none` shows the disabled shell.
+
+Optional QA settings:
 
 | Variable | Meaning |
 | --- | --- |
-| `SNAKE_FEATURES` | `none` (default) or `all`; maps to the visited URL's feature profile |
-| `PLUTO_PLAYWRIGHT_MODULE` | Existing absolute path to a Playwright module; otherwise uses installed `playwright` |
-| `PLUTO_BROWSER_CHANNEL` | Optional installed Chromium channel, e.g. `chrome`; otherwise uses Playwright's Chromium |
-| `PLUTO_QA_ARTIFACT_DIR` | Screenshot output directory override |
+| `SNAKE_FEATURES` | `none` or `all`; omitted means normal default URL |
+| `PLUTO_PLAYWRIGHT_MODULE` | Existing absolute Playwright module path; otherwise installed `playwright` |
+| `PLUTO_BROWSER_CHANNEL` | Installed Chromium channel, e.g. `chrome`; otherwise Playwright Chromium |
+| `PLUTO_QA_ARTIFACT_DIR` | Screenshot directory override |
 
-GitHub Actions has a job/status named **validate**, installs Node and Chromium
-with OS dependencies, runs both commands for both profiles, and uploads screenshots.
+GitHub Actions job/status **validate** installs Node and Chromium with OS
+dependencies, tests normal defaults and both explicit profiles, and uploads
+screenshots even on failure. No external module/browser overrides are needed in CI.
 
-## Feature controls
+## Module map
 
-Open `/?features=none` or `/?features=all` to explicitly request a profile. No query
-means all flags default off. Unknown profiles never enable a feature. For module
-callers, `resolveFeatures({ gameplay: true })` supports individual boolean overrides.
-The four known flags are `gameplay`, `savedProgress`, `challenges`, and `replay`.
-All four completed capabilities activate with `all`. Challenge and replay UI each
-require gameplay and their own flag; neither requires savedProgress. No query or
-`none` preserves the original shell without loading gameplay modules. Individual
-module consumers can call `mountGameplay({ challenges, replay, progress })` to
-exercise independent integrations. There is no feature-flag persistence.
+- `index.html`, `styles.css`: responsive semantic arcade shell.
+- `app.mjs`, `features.mjs`: immutable feature resolution and lazy integration.
+- `gameplay.mjs`: canvas rendering, controls, accessible status and storage UI.
+- `controller.mjs`: one simulation clock, per-tick input latch and replay modes.
+- `game.mjs`: pure `newGame`, `turn`, `tick`, `togglePause`, `restart`, `getTickMs`.
+- `challenges.mjs`, `board.mjs`: bounded seeded layouts and topology validation.
+- `storage.mjs`: bounded versioned scores/settings and graceful memory fallback.
+- `replay.mjs`: immutable recording and bounded version-1 classic/version-2 challenge playback.
+- `scripts/`: static server and browser QA lifecycle; `test/`: Node regressions.
 
-## Files and future seams
-
-- `index.html`, `styles.css`: responsive, semantic arcade shell.
-- `app.mjs`: flag-request wiring; lazy-loads completed gameplay only when requested.
-- `gameplay.mjs`: canvas rendering, keyboard and touch controls, status feedback.
-- `controller.mjs`: single simulation clock and per-tick input latch.
-- `storage.mjs`: bounded version-1 scores/settings records, injected storage and
-  graceful in-memory recovery; no saved game snapshots.
-- `replay.mjs`: pure immutable input recording, bounded version-1 classic and
-  version-2 challenge JSON validation/playback, tested in `test/replay.test.mjs`
-  and `test/integration.test.mjs`.
-- `features.mjs`: pure immutable flag resolution, tested in `test/`.
-- `game.mjs`: pure seeded Snake transitions, covered by `test/game.test.mjs`;
-  loaded only for enabled gameplay. Exports `newGame`, `turn`, `tick`, `togglePause`,
-  `restart`, and the `getTickMs` difficulty scheduling hint.
-- `challenges.mjs`: pure `createChallenge(options)` returns seeded, connected
-  obstacle layouts for `newGame(config)`. Difficulty controls obstacle density
-  and score-based speed progression. Challenge UI is individually opt-in.
-- `board.mjs`: internal bounded topology validation helper.
-- `scripts/`: local server and browser QA lifecycle.
-- [CONTRACTS.md](CONTRACTS.md): concrete engine options, state, PRNG and transition
-  rules, challenge configuration API, and persistence/replay schemas and APIs.
-
-Later capabilities must be completed and tested independently before wiring them
-into the shell. Keep unrelated unfinished features disabled.
+See [CONTRACTS.md](CONTRACTS.md) for exact options, schemas, PRNG, scheduling and
+compatibility rules. `test/engine-api.test.mjs` locks every public engine export,
+classic state/food values, all transitions and challenge restart compatibility.

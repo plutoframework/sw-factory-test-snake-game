@@ -4,8 +4,10 @@ import { FEATURE_NAMES, resolveFeatures } from '../features.mjs';
 
 const disabled = { gameplay: false, savedProgress: false, challenges: false, replay: false };
 
-test('future capabilities default off; none explicitly disables all', () => {
-  assert.deepEqual(resolveFeatures(), disabled);
+const enabled = Object.fromEntries(FEATURE_NAMES.map(name => [name, true]));
+
+test('completed capabilities default on; none explicitly disables all', () => {
+  assert.deepEqual(resolveFeatures(), enabled);
   assert.deepEqual(resolveFeatures('none'), disabled);
 });
 
@@ -37,7 +39,7 @@ test('results are immutable and independent of the input and other calls', () =>
   input.gameplay = false;
   assert.equal(result.gameplay, true);
   assert.throws(() => { result.gameplay = false; }, TypeError);
-  assert.deepEqual(resolveFeatures(), disabled);
+  assert.deepEqual(resolveFeatures(), enabled);
 });
 
 test('configured validation profile is supported', () => {

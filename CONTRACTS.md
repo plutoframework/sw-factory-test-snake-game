@@ -1,6 +1,7 @@
 # Module contracts
 
-The default browser remains a static shell. The completed gameplay adapter is
+The default browser enables all four completed capabilities. Explicit `none` and
+unknown profiles preserve the static shell. The completed gameplay adapter is
 loaded only when gameplay is requested. `storage.mjs` is loaded only when
 savedProgress is requested. Challenge selection and replay controls are wired
 behind their individual flags and require gameplay. No feature flag is persisted.
@@ -9,16 +10,19 @@ behind their individual flags and require gameplay. No feature flag is persisted
 
 `resolveFeatures(overrides)` returns a fresh frozen object with exactly these
 boolean keys: `gameplay`, `savedProgress`, `challenges`, `replay`. All default to
-`false`. The string `none` disables all; `all` enables all requested flags.
-An object may override individual keys with literal booleans. Unknown names,
+`true` when configuration is omitted (`undefined`). The string `none` disables
+all; `all` enables all four. Explicit object configuration retains opt-in semantics:
+keys start false and may be overridden with literal booleans. Unknown names,
 inherited properties, non-boolean values, and unknown profile strings are ignored.
 Overrides never mutate the input or global defaults.
 
 `app.mjs` reads `?features=none` or `?features=all` with `URLSearchParams` and passes
-the profile to the resolver. Missing and unknown values use disabled defaults.
+the profile to the resolver. A missing parameter uses enabled defaults; unknown
+or empty values use the disabled fallback.
 The first query value wins for duplicate parameters. No URL flag is persisted.
 `SNAKE_FEATURES` is a Node QA setting, not a browser environment variable: QA maps
-it to the URL. It accepts only `none` and `all`, defaulting to `none`.
+it to the URL. It accepts only `none` and `all`; when omitted, QA visits the
+normal default URL and writes screenshots under `default`.
 
 **Requested is not available.** The shell records the resolved request in
 `document.documentElement.dataset.features` and its active availability (challenge/replay also require gameplay) in
@@ -197,12 +201,12 @@ internal topology helper, not a public API.
   documented below. Individually flagged browser controls; no replay persistence.
 
 Later increments must document concrete exports and payload versions here before
-cross-module use. The shell must continue to render without these modules when
-unavailable, including under the `all` QA profile.
+cross-module use. The shell must continue to render with capabilities explicitly disabled. Only
+completed capabilities with passing regressions may join the default/`all` profile.
 
 ## Replay (`replay.mjs`, implemented; individually flagged UI)
 
-The replay request defaults false. Enabled gameplay lazily imports the module
+The completed replay request defaults true (explicit `none` disables it). Enabled gameplay lazily imports the module
 only when replay is requested. The UI offers last **completed** live run playback;
 Restart exits to a fresh live game. Scores are announced but never saved during
 playback. The pure APIs use the existing engine, never storage, clocks or DOM:

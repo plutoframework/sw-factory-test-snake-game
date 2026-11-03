@@ -115,10 +115,10 @@ test('recording work budget is enforced before stepping or accepting another inp
   assert.throws(() => recordDirection(session, 'up'), /budget/);
 });
 
-test('replay stays default disabled and explicit imports do not alter feature resolution', () => {
-  assert.equal(resolveFeatures().replay, false);
+test('completed replay defaults on and explicit imports do not alter feature resolution', () => {
+  assert.equal(resolveFeatures().replay, true);
   assert.equal(resolveFeatures('none').replay, false);
   assert.equal(resolveFeatures('all').replay, true);
   assert.ok(playbackReplay(run().raw).ok);
-  assert.equal(resolveFeatures().replay, false);
+  assert.equal(resolveFeatures().replay, true);
 });
