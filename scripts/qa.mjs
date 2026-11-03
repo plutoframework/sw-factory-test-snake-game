@@ -26,7 +26,9 @@ try {
     const errors = [];
     const engineRequests = [];
     page.on('request', request => {
-      if (new URL(request.url()).pathname === '/game.mjs') engineRequests.push(request.url());
+      if (['/game.mjs', '/challenges.mjs', '/board.mjs'].includes(new URL(request.url()).pathname)) {
+        engineRequests.push(request.url());
+      }
     });
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => {
@@ -52,7 +54,7 @@ try {
       assert.ok(await page.getByText('Gameplay is coming soon.', { exact: true }).isVisible());
       assert.ok(await page.getByRole('heading', { name: 'On the drawing board' }).isVisible());
       assert.equal(await page.locator('button, canvas').count(), 0, 'No gameplay UI yet');
-      assert.deepEqual(engineRequests, [], 'Standalone engine must not be wired into the shell yet');
+      assert.deepEqual(engineRequests, [], 'Standalone engine and challenges must not be wired into the shell yet');
       assert.deepEqual(await page.evaluate(() => JSON.parse(document.documentElement.dataset.features)), resolveFeatures(query === `?features=${profile}` ? profile : undefined));
       assert.deepEqual(await page.evaluate(() => JSON.parse(document.documentElement.dataset.availableFeatures)), resolveFeatures());
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: horizontal overflow`);

@@ -1,4 +1,15 @@
 // Pure deterministic engine. The browser adapter owns input and scheduling.
+import { isConnected } from './board.mjs';
+
+const speeds = Object.freeze({
+  classic: [150, 150, 0], easy: [200, 110, 5], normal: [150, 70, 8], hard: [100, 45, 10],
+});
+
+/** Scheduling hint only; a tick always advances exactly one cell. */
+export function getTickMs(state) {
+  const [initial, minimum, step] = speeds[state.difficulty ?? 'classic'];
+  return Math.max(minimum, initial - Math.floor(state.score / 5) * step);
+}
 const vectors = Object.freeze({
   up: [0, -1], right: [1, 0], down: [0, 1], left: [-1, 0],
 });
@@ -10,11 +21,13 @@ function immutable(state) {
     ...state,
     snake: Object.freeze(state.snake.map(cell => Object.freeze({ ...cell }))),
     food: state.food === null ? null : Object.freeze({ ...state.food }),
+    ...(state.obstacles ? { obstacles: Object.freeze(state.obstacles.map(cell => Object.freeze({ ...cell }))) } : {}),
   });
 }
 
 function placeFood(state) {
   const occupied = new Set(state.snake.map(({ x, y }) => y * state.width + x));
+  for (const { x, y } of state.obstacles ?? []) occupied.add(y * state.width + x);
   const freeCount = state.width * state.height - occupied.size;
   if (freeCount === 0) return { ...state, food: null, status: 'gameover' };
   // One unsigned 32-bit LCG step per placement, including the initial food.
@@ -27,7 +40,7 @@ function placeFood(state) {
   }
 }
 
-export function newGame({ width = 20, height = 20, seed = 1 } = {}) {
+export function newGame({ width = 20, height = 20, seed = 1, obstacles, difficulty = 'classic' } = {}) {
   if (!Number.isSafeInteger(width) || width < 4 ||
       !Number.isSafeInteger(height) || height < 1 || width * height > 1_000_000) {
     throw new RangeError('Board requires width >= 4, height >= 1, and at most 1000000 cells');
@@ -37,8 +50,27 @@ export function newGame({ width = 20, height = 20, seed = 1 } = {}) {
   }
   const x = Math.max(2, Math.floor(width / 2));
   const y = Math.floor(height / 2);
+  if (!Object.hasOwn(speeds, difficulty)) throw new RangeError('Unknown difficulty');
+  if (obstacles !== undefined) {
+    if (!Array.isArray(obstacles)) throw new RangeError('Obstacles must be an array');
+    const blocked = new Set();
+    for (const cell of obstacles) {
+      if (!cell || !Number.isInteger(cell.x) || !Number.isInteger(cell.y) ||
+          cell.x < 0 || cell.x >= width || cell.y < 0 || cell.y >= height ||
+          (cell.y === y && cell.x >= x - 2 && cell.x <= x + 1)) {
+        throw new RangeError('Obstacles must be in bounds and leave the initial snake and first step clear');
+      }
+      const key = cell.y * width + cell.x;
+      if (blocked.has(key)) throw new RangeError('Duplicate obstacle');
+      blocked.add(key);
+    }
+    if (!isConnected(width, height, blocked, y * width + x)) {
+      throw new RangeError('All non-obstacle cells must be connected');
+    }
+  }
   return immutable(placeFood({
     width, height, seed, rngState: seed,
+    ...(obstacles !== undefined || difficulty !== 'classic' ? { obstacles: obstacles ?? [], difficulty } : {}),
     snake: [{ x, y }, { x: x - 1, y }, { x: x - 2, y }],
     direction: 'right', score: 0, status: 'running', food: null,
   }));
@@ -57,7 +89,8 @@ export function tick(state) {
   const eating = state.food !== null && sameCell(head, state.food);
   const body = eating ? state.snake : state.snake.slice(0, -1);
   if (head.x < 0 || head.x >= state.width || head.y < 0 || head.y >= state.height ||
-      body.some(cell => sameCell(head, cell))) {
+      body.some(cell => sameCell(head, cell)) ||
+      (state.obstacles ?? []).some(cell => sameCell(head, cell))) {
     return immutable({ ...state, status: 'gameover' });
   }
   const next = { ...state, snake: [head, ...body], score: state.score + (eating ? 1 : 0) };
@@ -70,5 +103,6 @@ export function togglePause(state) {
 }
 
 export function restart(state) {
-  return newGame({ width: state.width, height: state.height, seed: state.seed });
+  return newGame({ width: state.width, height: state.height, seed: state.seed,
+    obstacles: state.obstacles, difficulty: state.difficulty });
 }

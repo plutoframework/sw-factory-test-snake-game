@@ -71,10 +71,15 @@ modules. There is no feature persistence.
 - `features.mjs`: pure immutable flag resolution, tested in `test/`.
 - `game.mjs`: pure seeded Snake transitions, covered by `test/game.test.mjs`;
   not imported by the shell. Exports `newGame`, `turn`, `tick`, `togglePause`,
-  and `restart`.
+  `restart`, and the `getTickMs` difficulty scheduling hint.
+- `challenges.mjs`: pure `createChallenge(options)` returns seeded, connected
+  obstacle layouts for `newGame(config)`. Difficulty controls obstacle density
+  and score-based speed progression. This API is opt-in; no challenge UI is wired.
+- `board.mjs`: internal bounded topology validation helper.
 - `scripts/`: local server and browser QA lifecycle.
 - [CONTRACTS.md](CONTRACTS.md): concrete engine options, state, PRNG and transition
-  rules; reserved seams for storage, challenges, and replay (not implemented).
+  rules and the challenge configuration API; reserved seams for storage and
+  replay (not implemented).
 
 Later capabilities must be completed and tested independently before wiring them
 into the shell. Keep unrelated unfinished features disabled.
