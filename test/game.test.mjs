@@ -150,8 +150,8 @@ test('every operation preserves caller state and produces deeply frozen states',
   }
 });
 
-test('engine results are independent of feature requests; gameplay defaults off', () => {
-  assert.equal(resolveFeatures().gameplay, false);
+test('engine results are independent of feature requests; completed gameplay defaults on', () => {
+  assert.equal(resolveFeatures().gameplay, true);
   for (const profile of ['none', 'all']) {
     assert.equal(resolveFeatures(profile).gameplay, profile === 'all');
     const state = newGame({ seed: 10 });

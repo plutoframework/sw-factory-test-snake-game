@@ -106,8 +106,10 @@ async function checkIntegration(page, name) {
   await page.locator('#challenge-difficulty').selectOption('hard');
   await activate('.challenge-controls button');
   assert.deepEqual(await head(page), { x: 10, y: 10 });
+  await page.getByLabel('Seed', { exact: true }).focus();
+  await page.keyboard.press('ArrowUp'); // native number-input editing, not steering
   await page.clock.runFor(100);
-  assert.deepEqual(await head(page), { x: 11, y: 10 }, 'Hard challenge uses the engine difficulty speed');
+  assert.deepEqual(await head(page), { x: 11, y: 10 }, 'Editing a seed cannot steer the active game; hard speed is 100ms');
   await page.clock.runFor(2000);
   assert.equal(await page.locator('#board').getAttribute('data-status'), 'gameover');
   const terminal = await page.locator('#board').evaluate(el => el.toDataURL());
@@ -164,8 +166,8 @@ async function checkIntegration(page, name) {
   assert.notEqual(await page.locator('#seed').evaluate(el => getComputedStyle(el).outlineStyle), 'none');
 }
 
-const profile = process.env.SNAKE_FEATURES ?? 'none';
-assert.ok(['none', 'all'].includes(profile), 'SNAKE_FEATURES must be none or all');
+const profile = process.env.SNAKE_FEATURES ?? 'default';
+assert.ok(['default', 'none', 'all'].includes(profile), 'SNAKE_FEATURES must be none or all (or omitted)');
 const modulePath = process.env.PLUTO_PLAYWRIGHT_MODULE;
 const { chromium } = await import(modulePath ? pathToFileURL(modulePath).href : 'playwright');
 const artifacts = resolve(process.env.PLUTO_QA_ARTIFACT_DIR ?? `artifacts/qa/${profile}`);
@@ -216,16 +218,22 @@ try {
       return route.continue();
     });
     // Check the actual default as well as explicit override and unknown-name safety.
-    for (const query of ['', `?features=${profile}`, '?features=unknown']) {
+    for (const query of new Set(['', ...(profile === 'default' ? [] : [`?features=${profile}`]), '?features=none', '?features=unknown', '?features=none&features=all'])) {
       engineRequests.length = 0;
       replayRequests.length = 0;
       await page.goto(`${server.url}/${query}`, { waitUntil: 'networkidle' });
       await page.waitForFunction(() => document.documentElement.dataset.ready === 'true');
       assert.equal(await page.title(), 'Snake Arcade');
       assert.equal(await page.getByRole('heading', { level: 1 }).textContent(), 'Small snake.Big ambitions.');
-      const enabled = profile === 'all' && query === '?features=all';
+      const requested = resolveFeatures(new URLSearchParams(query).get('features') ?? undefined);
+      const enabled = requested.gameplay;
       assert.ok(await page.getByRole('heading', { name: enabled ? 'At the controls' : 'On the drawing board' }).isVisible());
       if (enabled) {
+        assert.equal(await page.getByRole('img', { name: 'Snake game board' }).count(), 1);
+        assert.equal(await page.getByRole('group', { name: 'Steer snake' }).count(), 1);
+        for (const label of ['Board', 'Seed', 'Challenge difficulty', 'Difficulty preference', 'Sound preference']) {
+          assert.equal(await page.getByLabel(label, { exact: true }).count(), 1, `${label}: accessible label`);
+        }
         assert.deepEqual(engineRequests.map(url => new URL(url).pathname).sort(),
           ['/board.mjs', '/challenges.mjs', '/game.mjs'], 'Enabled integration loads completed engine modules');
         await checkGameplay(page, name);
@@ -238,17 +246,45 @@ try {
         assert.equal(await page.locator('#saved-progress').count(), 0);
         assert.deepEqual(await page.evaluate(() => window.storageCalls), { reads: 0, writes: 0 }, 'Disabled mode never reads or writes storage');
       }
-      assert.deepEqual(await page.evaluate(() => JSON.parse(document.documentElement.dataset.features)), resolveFeatures(query === `?features=${profile}` ? profile : undefined));
+      assert.deepEqual(await page.evaluate(() => JSON.parse(document.documentElement.dataset.features)), requested);
       assert.deepEqual(await page.evaluate(() => JSON.parse(document.documentElement.dataset.availableFeatures)), resolveFeatures({ gameplay: enabled, savedProgress: enabled, challenges: enabled, replay: enabled }));
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: horizontal overflow`);
       assert.equal(replayRequests.length > 0, enabled, 'Replay module loads only for enabled integration');
       assert.deepEqual(errors, [], `${name}: browser errors`);
-      if (query === `?features=${profile}`) {
+      if (query === (profile === 'default' ? '' : `?features=${profile}`)) {
         const path = join(artifacts, `${name}.png`);
         await page.screenshot({ path, fullPage: true });
         console.log(`Screenshot: ${path}`);
       }
+      // Each profile starts with a clean browser record, not the preceding run's
+      // scores/difficulty. Init-script counters reset on the next navigation.
+      await page.evaluate(() => localStorage.clear());
     }
+    await page.close();
+  }
+  // Narrow viewport/reduced-motion acceptance and background-tab pause.
+  {
+    const page = await browser.newPage({ viewport: { width: 320, height: 700 }, reducedMotion: 'reduce' });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.clock.install(); await page.clock.pauseAt(new Date());
+    await page.goto(server.url, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => document.documentElement.dataset.ready === 'true');
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '320px: no overflow');
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    assert.equal(await page.locator('#board').getAttribute('data-status'), 'paused');
+    const frozen = await head(page);
+    await page.clock.runFor(1600);
+    assert.deepEqual(await head(page), frozen, 'Background tabs cannot silently advance a run');
+    await page.evaluate(() => {
+      delete document.hidden;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    assert.equal(await page.locator('#board').getAttribute('data-status'), 'paused', 'Returning requires explicit resume');
+    assert.deepEqual(errors, []);
     await page.close();
   }
   // Explicit module opt-in only: no UI, storage, timers or network services needed.
@@ -320,7 +356,7 @@ try {
     }
     await page.close();
   }
-  if (profile === 'all') {
+  if (profile !== 'none') {
     for (const failure of ['corrupt', 'unknown', 'access', 'read', 'write']) {
       const page = await browser.newPage();
       const errors = [];

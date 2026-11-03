@@ -3,8 +3,10 @@ export const FEATURE_NAMES = Object.freeze([
 ]);
 
 /** Resolve a profile string or explicit boolean overrides. Unknown names are ignored. */
-export function resolveFeatures(overrides = {}) {
-  const all = overrides === 'all';
+export function resolveFeatures(overrides) {
+  // Omitted configuration enables only the completed capabilities below.
+  // Explicit profiles/objects retain their original opt-in semantics.
+  const all = overrides === undefined || overrides === 'all';
   const values = Object.fromEntries(FEATURE_NAMES.map(name => [name, all]));
   if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
     for (const name of FEATURE_NAMES) {

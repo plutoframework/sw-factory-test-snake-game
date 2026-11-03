@@ -28,9 +28,9 @@ export async function mountGameplay({ progress, challenges = false, replay = fal
   if (challenges) {
     selection = document.createElement('form');
     selection.className = 'challenge-controls';
-    selection.innerHTML = `<label for="challenge">Board <select id="challenge"><option value="classic">Classic · no obstacles</option><option value="challenge">Seeded challenge</option></select></label>
+    selection.innerHTML = `<label for="challenge"><span id="board-label">Board</span><select id="challenge" aria-labelledby="board-label"><option value="classic">Classic · no obstacles</option><option value="challenge">Seeded challenge</option></select></label>
       <label for="seed">Seed <input id="seed" type="number" min="0" max="4294967295" step="1" value="1" required></label>
-      <label for="challenge-difficulty">Challenge difficulty <select id="challenge-difficulty"><option value="easy">Easy · slower, fewer walls</option><option value="normal">Normal</option><option value="hard">Hard · faster, more walls</option></select></label>
+      <label for="challenge-difficulty"><span id="challenge-difficulty-label">Challenge difficulty</span><select id="challenge-difficulty" aria-labelledby="challenge-difficulty-label"><option value="easy">Easy · slower, fewer walls</option><option value="normal">Normal</option><option value="hard">Hard · faster, more walls</option></select></label>
       <button type="submit">Start selected game</button><p>Selection applies to a new game. Restart repeats the current board.</p>`;
     cabinet.prepend(selection);
   }
@@ -63,7 +63,7 @@ export async function mountGameplay({ progress, challenges = false, replay = fal
     panel.innerHTML = `<h2 id="scores-title">Local high scores</h2>
       <ol id="high-scores"></ol><p id="scores-empty">Finish a game to post your first score.</p>
       <label class="sound-setting"><input id="sound" type="checkbox"> Sound preference</label>
-      <label class="difficulty-setting" for="difficulty">Difficulty preference <select id="difficulty"><option value="classic">Classic</option><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></label>
+      <label class="difficulty-setting" for="difficulty"><span id="difficulty-label">Difficulty preference</span><select id="difficulty" aria-labelledby="difficulty-label"><option value="classic">Classic</option><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></label>
       <p class="save-note">Saved on this browser when available. Sound is not yet available. Difficulty is a preference until challenge play is selected.</p>`;
     document.querySelector('.intro').append(panel);
     const sound = panel.querySelector('#sound');

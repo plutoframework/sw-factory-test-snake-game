@@ -15,6 +15,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: Test and QA normal defaults
+        run: |
+          npm test
+          npm run qa
       - name: Test and QA both feature profiles
         run: |
           for profile in none all; do
