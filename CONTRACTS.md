@@ -1,10 +1,10 @@
 # Module contracts
 
-The browser remains a static shell. `game.mjs` implements the standalone engine,
-but is not imported by the shell: no game loop or playable board is wired yet.
-`storage.mjs`, `challenges.mjs`, and `replay.mjs` deliberately do not exist and must
-not be imported until their capability is independently complete. Gameplay and all
-other browser capabilities remain unavailable, including when requested with `all`.
+The default browser remains a static shell. The completed gameplay adapter is
+loaded only when gameplay is requested. `storage.mjs`, `challenges.mjs`, and
+`replay.mjs` deliberately do not exist and must not be imported until their
+capability is independently complete. Those capabilities remain unavailable,
+including when requested with `all`.
 
 ## Features (`features.mjs`, implemented)
 
@@ -22,14 +22,30 @@ The first query value wins for duplicate parameters. No URL flag is persisted.
 it to the URL. It accepts only `none` and `all`, defaulting to `none`.
 
 **Requested is not available.** The shell records the resolved request in
-`document.documentElement.dataset.features` and its all-disabled availability in
+`document.documentElement.dataset.features` and its active availability (only gameplay may be true) in
 `dataset.availableFeatures` (both JSON). `dataset.ready` becomes `true` when the
 shell module has initialized. Even an enabled request cannot activate missing
 modules. Later increments may activate a requested capability only once that
 module and its regression tests are complete; unrelated features must stay off.
 These dataset values are QA diagnostics, not authorization controls.
 
-## Engine (`game.mjs`, implemented; not wired to UI)
+## Browser adapter (`controller.mjs`, `gameplay.mjs`, implemented)
+
+`mountGameplay()` replaces the decorative poster only when gameplay is enabled.
+It renders `canvas#board`, numeric-only `#score`, `button#pause`, `button#restart`,
+and four `button[data-direction]` controls. Keyboard arrows/WASD steer; Space
+prevents scrolling/default button activation and toggles pause. Key repeats are
+ignored. Hidden documents pause automatically. Game-over status directs restart.
+
+`createController(render, { schedule = setInterval, cancel = clearInterval } = {})`
+returns `direction(name)`, `pause()`, `restart()`, and `dispose()`. It publishes
+immutable engine state initially and after updates. One lifetime interval runs at
+exported `STEP_MS = 160`; restart resets state/input latch, never schedules another
+clock. At most one accepted turn per tick prevents chained input from reversing
+into the neck. Ignored inputs do not consume the latch. Pause does not clear it.
+Disposal cancels the clock and makes operations inert. No storage is accessed.
+
+## Engine (`game.mjs`, implemented; wired only behind gameplay)
 
 Named exports: `newGame`, `turn`, `tick`, `togglePause`, and `restart`.
 The engine is pure JavaScript with no DOM, timers, networking, or storage.
@@ -63,7 +79,7 @@ A full board has `food: null`, status `gameover`, and does not advance the PRNG.
 `turn(state, direction)` accepts cardinal directions only while running, ignores
 same direction and direct reversal relative to **state.direction**, and updates
 direction immediately. Multiple turns before a tick use the latest direction;
-input throttling belongs to a future adapter. `tick(state)` advances one cell
+input throttling belongs to the browser adapter. `tick(state)` advances one cell
 according to that direction. Eating retains the tail, adds one score, and places
 food. Otherwise the tail vacates, allowing movement into that cell. Wall or body
 collision changes only status to `gameover`, leaving the last valid board intact.
