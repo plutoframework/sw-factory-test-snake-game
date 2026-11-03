@@ -1,10 +1,14 @@
 # Snake Arcade
 
-A dependency-free static browser shell in cobalt, ivory, and orange. This is the
-engine increment: a deterministic standalone engine is included, but **no gameplay
-UI is wired yet**. The winding path is decorative artwork, not a playable board.
-All browser gameplay and future capabilities are
-unavailable, including when explicitly requested by feature flags.
+A dependency-free static browser arcade in cobalt, ivory, and orange. Open
+`/?features=all` for playable Snake: arrows/WASD or touch buttons steer, Space or
+Pause pauses, and Restart starts fresh. Eat orange food to score; walls and your
+own body end the game. With no flag (or `?features=none`), the original decorative
+shell is preserved. With `all`, the local high-scores/settings panel saves the top
+ten completed scores and sound/difficulty preferences across reloads. Preferences
+do not yet change audio or difficulty. Corrupt records reset safely; blocked or full
+storage falls back to session memory. No storage is accessed with flags disabled.
+Challenges and replay remain unavailable.
 
 ## Run locally
 
@@ -19,7 +23,8 @@ npm start
 Set `PORT` to choose another port. Stop with Ctrl-C. There is no build step or
 runtime network dependency; the browser loads only local HTML, CSS, and ES modules.
 The app can also be hosted on a static server serving this directory's public
-assets (`index.html`, `styles.css`, `app.mjs`, `features.mjs`).
+assets (`index.html`, `styles.css`, `app.mjs`, `features.mjs`, `gameplay.mjs`,
+`controller.mjs`, `game.mjs`, `board.mjs`, `storage.mjs`).
 
 ## Validate
 
@@ -37,8 +42,12 @@ SNAKE_FEATURES=all npm run qa
 `npm test` uses Node's built-in test runner. `npm run qa` starts its own ephemeral
 localhost server, launches headless Chromium, and checks the default page, selected
 profile, and unknown-profile fallback at 1440px desktop and 390px mobile widths.
-It verifies branding, unavailable gameplay, no horizontal overflow, no browser
-errors/failed assets, and no remote runtime requests. It writes full-page
+It verifies branding, the disabled shell, enabled gameplay controls, scoring,
+reversal protection, pause/resume, game over, repeated restarts, touch target size,
+keyboard focus, no horizontal overflow, no browser errors/failed assets, and no
+remote runtime requests. It also checks saved scores/settings across reload,
+exactly-once completion recording, disabled storage isolation, and storage failure
+recovery. A controlled browser clock makes movement checks deterministic. It writes full-page
 screenshots to `artifacts/qa/{none,all}/{desktop,mobile}.png` and closes both browser
 and server on success or failure. These generated files are ignored by Git.
 
@@ -60,17 +69,21 @@ Open `/?features=none` or `/?features=all` to explicitly request a profile. No q
 means all flags default off. Unknown profiles never enable a feature. For module
 callers, `resolveFeatures({ gameplay: true })` supports individual boolean overrides.
 The four known flags are `gameplay`, `savedProgress`, `challenges`, and `replay`.
-Requests do not imply readiness: all four capabilities are unavailable in this
-increment, so every profile safely renders the same shell without importing absent
-modules. There is no feature persistence.
+Requests do not imply UI readiness: only gameplay and savedProgress can activate
+in the browser. Challenge UI and replay stay off even under `all`; the standalone
+challenge API is not imported by the shell. There is no feature-flag persistence.
 
 ## Files and future seams
 
 - `index.html`, `styles.css`: responsive, semantic arcade shell.
-- `app.mjs`: flag-request wiring only, no gameplay.
+- `app.mjs`: flag-request wiring; lazy-loads completed gameplay only when requested.
+- `gameplay.mjs`: canvas rendering, keyboard and touch controls, status feedback.
+- `controller.mjs`: single simulation clock and per-tick input latch.
+- `storage.mjs`: bounded version-1 scores/settings records, injected storage and
+  graceful in-memory recovery; no saved game snapshots.
 - `features.mjs`: pure immutable flag resolution, tested in `test/`.
 - `game.mjs`: pure seeded Snake transitions, covered by `test/game.test.mjs`;
-  not imported by the shell. Exports `newGame`, `turn`, `tick`, `togglePause`,
+  loaded only for enabled gameplay. Exports `newGame`, `turn`, `tick`, `togglePause`,
   `restart`, and the `getTickMs` difficulty scheduling hint.
 - `challenges.mjs`: pure `createChallenge(options)` returns seeded, connected
   obstacle layouts for `newGame(config)`. Difficulty controls obstacle density
@@ -78,7 +91,7 @@ modules. There is no feature persistence.
 - `board.mjs`: internal bounded topology validation helper.
 - `scripts/`: local server and browser QA lifecycle.
 - [CONTRACTS.md](CONTRACTS.md): concrete engine options, state, PRNG and transition
-  rules and the challenge configuration API; reserved seams for storage and
+  rules, challenge configuration API, persistence schema, and reserved seam for
   replay (not implemented).
 
 Later capabilities must be completed and tested independently before wiring them
