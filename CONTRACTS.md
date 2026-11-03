@@ -1,9 +1,10 @@
 # Module contracts
 
-This increment is a static shell only. The following seams reserve later work;
-`game.mjs`, `storage.mjs`, `challenges.mjs`, and `replay.mjs` deliberately do not
-exist and must not be imported until their capability is independently complete.
-There is no engine, game loop, playable board, persistence, or replay in this build.
+The browser remains a static shell. `game.mjs` implements the standalone engine,
+but is not imported by the shell: no game loop or playable board is wired yet.
+`storage.mjs`, `challenges.mjs`, and `replay.mjs` deliberately do not exist and must
+not be imported until their capability is independently complete. Gameplay and all
+other browser capabilities remain unavailable, including when requested with `all`.
 
 ## Features (`features.mjs`, implemented)
 
@@ -28,11 +29,12 @@ modules. Later increments may activate a requested capability only once that
 module and its regression tests are complete; unrelated features must stay off.
 These dataset values are QA diagnostics, not authorization controls.
 
-## Engine (`game.mjs`, reserved)
+## Engine (`game.mjs`, implemented; not wired to UI)
 
-Reserve named exports `newGame`, `turn`, `tick`, `togglePause`, and `restart`.
-The engine will be pure JavaScript with no DOM, timers, networking, or storage.
-Operations return immutable state without modifying earlier states or inputs.
+Named exports: `newGame`, `turn`, `tick`, `togglePause`, and `restart`.
+The engine is pure JavaScript with no DOM, timers, networking, or storage.
+Changed states are deeply frozen, with fresh cell objects; no operation modifies
+or freezes caller-owned input. No-op operations may return the input unchanged.
 
 The state contract includes:
 
@@ -44,12 +46,35 @@ The state contract includes:
 - `food`: seeded, deterministic `{ x, y }` placement (or `null` when no free cell remains).
 - Explicit PRNG seed/state sufficient to reproduce food placement without `Math.random`.
 
-Intended call seams are `newGame(options)`, `turn(state, direction)`,
-`tick(state)`, `togglePause(state)`, and `restart(state)`. Exact option defaults,
-PRNG representation, scoring, collision rules, and invalid-input semantics belong
-to the engine increment and its tests, not this shell. The browser adapter will
-own input and scheduling, not the engine. Restart must remain deterministic from
-the original configuration and seed.
+`newGame({ width = 20, height = 20, seed = 1 } = {})` starts running, facing
+right, score zero, with three horizontal cells centered on the board (head x is
+`max(2, floor(width/2))`, y is `floor(height/2)`). Width must be an integer >= 4,
+height an integer >= 1, with at most 1,000,000 cells. Seed must be an unsigned
+32-bit integer, including zero. Invalid values throw `RangeError`; options are
+never modified. Every supported new board has free food and room to move right.
+
+State includes original `seed` and current `rngState`, both unsigned 32-bit
+integers. Each food placement advances the LCG once:
+`rngState = (imul(rngState, 1664525) + 1013904223) >>> 0`.
+Free cells are enumerated row-major and selected using
+`floor(rngState / 2**32 * freeCount)`. No rejection loop or `Math.random` is used.
+A full board has `food: null`, status `gameover`, and does not advance the PRNG.
+
+`turn(state, direction)` accepts cardinal directions only while running, ignores
+same direction and direct reversal relative to **state.direction**, and updates
+direction immediately. Multiple turns before a tick use the latest direction;
+input throttling belongs to a future adapter. `tick(state)` advances one cell
+according to that direction. Eating retains the tail, adds one score, and places
+food. Otherwise the tail vacates, allowing movement into that cell. Wall or body
+collision changes only status to `gameover`, leaving the last valid board intact.
+Paused/gameover ticks freeze progress; turns also do nothing in those statuses.
+
+`togglePause(state)` switches running/paused and leaves gameover unchanged.
+`restart(state)` calls newGame with the original width, height and seed, restoring
+the exact initial state. Operations accept valid engine states (including mutable
+copies); malformed state snapshots are outside this contract. The future storage
+boundary must validate snapshots before use. The browser adapter owns input and
+scheduling, not the engine.
 
 ## Other reserved boundaries
 
