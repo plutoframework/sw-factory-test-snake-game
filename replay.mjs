@@ -1,4 +1,8 @@
 import { newGame, turn, tick } from './game.mjs';
+import { createChallenge } from './challenges.mjs';
+
+export const CHALLENGE_REPLAY_VERSION = 2;
+const engineOptions = options => options.difficulty ? createChallenge(options) : options;
 
 export const REPLAY_VERSION = 1;
 export const MAX_RECORD_LENGTH = 524288;
@@ -25,10 +29,11 @@ export function validateReplay(raw) {
   let record;
   try { record = JSON.parse(raw); } catch { return fail('malformed', 'Replay is not valid JSON'); }
   if (!record || typeof record !== 'object' || Array.isArray(record)) return fail('malformed', 'Expected a replay object');
-  if (record.version !== REPLAY_VERSION) return fail('unsupported', 'Unsupported replay version');
+  if (![REPLAY_VERSION, CHALLENGE_REPLAY_VERSION].includes(record.version)) return fail('unsupported', 'Unsupported replay version');
   if (!keys(record, ['version', 'options', 'ticks', 'inputs', 'expected']) ||
-      !keys(record.options, ['width', 'height', 'seed']) ||
+      !keys(record.options, record.version === 2 ? ['width', 'height', 'seed', 'difficulty'] : ['width', 'height', 'seed']) ||
       !keys(record.expected, ['score', 'status'])) return fail('malformed', 'Unexpected replay fields');
+  if (record.version === 2 && !['easy', 'normal', 'hard'].includes(record.options.difficulty)) return fail('malformed', 'Invalid challenge difficulty');
   const { width, height, seed } = record.options;
   if (!integer(width, 4, MAX_CELLS) || !integer(height, 1, MAX_CELLS) ||
       !integer(seed, 0, 0xffffffff)) return fail('malformed', 'Invalid board options or seed');
@@ -54,7 +59,7 @@ export function playbackReplay(raw) {
   const result = validateReplay(raw);
   if (!result.ok) return result;
   const { record } = result;
-  let state = newGame(record.options);
+  let state = newGame(engineOptions(record.options));
   let index = 0;
   for (let simulationTick = 0; simulationTick < record.ticks; simulationTick++) {
     if (state.status !== 'running') return fail('incompatible', 'Replay continues after game over');
@@ -74,12 +79,13 @@ export function playbackReplay(raw) {
 }
 
 /** Trusted functional recording session. Retain each returned session; nothing is mutated. */
-export function createRecording({ width = 20, height = 20, seed = 1 } = {}) {
+export function createRecording({ width = 20, height = 20, seed = 1, difficulty } = {}) {
   if (!integer(width, 4, MAX_CELLS) || !integer(height, 1, MAX_CELLS) || width * height > MAX_CELLS) {
     throw new RangeError('Replay board exceeds supported dimensions');
   }
-  const state = newGame({ width, height, seed });
-  return Object.freeze({ state, ticks: 0, inputs: Object.freeze([]) });
+  const options = Object.freeze({ width, height, seed, ...(difficulty ? { difficulty } : {}) });
+  const state = newGame(engineOptions(options));
+  return Object.freeze({ state, options, ticks: 0, inputs: Object.freeze([]) });
 }
 
 export function recordDirection(session, direction) {
@@ -109,8 +115,8 @@ export function stepRecording(session) {
 /** Export JSON; running prefixes and completed games are both supported. */
 export function finishRecording(session) {
   if (session.inputs.at(-1)?.tick === session.ticks) throw new RangeError('Step the pending direction before exporting');
-  const { width, height, seed, score, status } = session.state;
-  const raw = JSON.stringify({ version: REPLAY_VERSION, options: { width, height, seed },
+  const { score, status } = session.state;
+  const raw = JSON.stringify({ version: session.options.difficulty ? CHALLENGE_REPLAY_VERSION : REPLAY_VERSION, options: session.options,
     ticks: session.ticks, inputs: session.inputs, expected: { score, status } });
   const result = validateReplay(raw);
   if (!result.ok) throw new RangeError(result.message);

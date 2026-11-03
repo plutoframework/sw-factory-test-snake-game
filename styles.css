@@ -43,7 +43,16 @@ button:hover { background: var(--ink); }
 button:active { transform: translateY(2px); }
 button:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
 button:disabled { opacity: .55; cursor: default; }
-.game-actions { display: flex; gap: 12px; }
+.challenge-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; padding-bottom: 18px; border-bottom: 2px solid var(--ink); }
+.challenge-controls label { display: grid; gap: 6px; font-size: 14px; min-width: 0; }
+.challenge-controls label:first-child, .challenge-controls p, .challenge-controls button { grid-column: 1 / -1; }
+.challenge-controls input, .challenge-controls select { width: 100%; min-width: 0; min-height: 48px; font: inherit; color: var(--ink); background: var(--ivory); border: 2px solid var(--ink); border-radius: 5px; padding: 6px; }
+.challenge-controls p { font-size: 13px; line-height: 1.4; margin: 0; }
+.challenge-controls :focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+.poster[data-mode^="replay"] #board { border: 6px solid var(--orange); }
+.poster[data-mode^="replay"] #game-status { font-weight: bold; }
+.game-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+#replay { flex-basis: 100%; font-size: 14px; }
 .game-actions button { flex: 1; }
 #restart { color: var(--ink); background: var(--ivory); }
 .directions { display: grid; grid-template-columns: repeat(3, 52px); gap: 6px; justify-content: center; margin-top: 16px; }

@@ -2,7 +2,7 @@ export const STORAGE_KEY = 'snake-arcade.progress';
 export const STORAGE_VERSION = 1;
 export const MAX_SCORES = 10;
 export const MAX_RECORD_LENGTH = 2048;
-const difficulties = ['classic', 'easy', 'hard'];
+const difficulties = ['classic', 'easy', 'normal', 'hard'];
 const validScore = score => Number.isSafeInteger(score) && score >= 0 && score <= 1_000_000;
 const validSettings = settings => settings && typeof settings === 'object' && !Array.isArray(settings)
   && typeof settings.sound === 'boolean' && difficulties.includes(settings.difficulty);

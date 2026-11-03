@@ -65,8 +65,9 @@ async function checkGameplay(page, name) {
   assert.equal(await page.locator('#score').textContent(), '0');
   await pause.click(); // stable screenshot
   await restart.focus();
-  await page.keyboard.press('Tab');
-  assert.notEqual(await page.locator('[data-direction="up"]').evaluate(el => getComputedStyle(el).outlineStyle), 'none');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'pause');
+  assert.notEqual(await pause.evaluate(el => getComputedStyle(el).outlineStyle), 'none');
   for (const button of await page.locator('button').all()) {
     const box = await button.boundingBox();
     assert.ok(box.width >= 44 && box.height >= 44, 'Usable touch target');
@@ -95,6 +96,72 @@ async function checkPersistence(page) {
   assert.equal(await page.locator('#difficulty').inputValue(), 'hard');
   assert.equal(await page.locator('#score').textContent(), '0', 'Reload starts a fresh game, not a snapshot');
   await page.locator('#pause').click();
+}
+
+async function checkIntegration(page, name) {
+  const activate = async selector => name === 'mobile' ? page.locator(selector).tap() : page.locator(selector).click();
+  assert.equal(await page.locator('#replay').isDisabled(), true, 'Replays are session-only, never loaded from storage');
+  assert.equal(await page.locator('#challenge').inputValue(), 'challenge', 'Saved hard preference selects challenge mode on reload');
+  await page.locator('#seed').fill('42');
+  await page.locator('#challenge-difficulty').selectOption('hard');
+  await activate('.challenge-controls button');
+  assert.deepEqual(await head(page), { x: 10, y: 10 });
+  await page.clock.runFor(100);
+  assert.deepEqual(await head(page), { x: 11, y: 10 }, 'Hard challenge uses the engine difficulty speed');
+  await page.clock.runFor(2000);
+  assert.equal(await page.locator('#board').getAttribute('data-status'), 'gameover');
+  const terminal = await page.locator('#board').evaluate(el => el.toDataURL());
+  const scores = await page.locator('#high-scores li').allTextContents();
+  const writes = await page.evaluate(() => window.storageCalls.writes);
+  await activate('#replay');
+  assert.equal(await page.locator('.poster').getAttribute('data-mode'), 'replay');
+  assert.ok(await page.locator('[data-direction="up"]').isDisabled());
+  await page.keyboard.press('ArrowUp');
+  await page.clock.runFor(100);
+  assert.deepEqual(await head(page), { x: 11, y: 10 }, 'Live keyboard cannot steer a replay');
+  await activate('#pause');
+  const paused = await page.locator('#board').evaluate(el => el.toDataURL());
+  await page.clock.runFor(1000);
+  assert.equal(await page.locator('#board').evaluate(el => el.toDataURL()), paused);
+  await page.keyboard.press('Space');
+  await page.clock.runFor(2000);
+  assert.equal(await page.locator('.poster').getAttribute('data-mode'), 'replay-ended');
+  assert.equal(await page.locator('#board').evaluate(el => el.toDataURL()), terminal);
+  assert.deepEqual(await page.locator('#high-scores li').allTextContents(), scores);
+  assert.equal(await page.evaluate(() => window.storageCalls.writes), writes, 'Replay cannot persist scores or snapshots');
+  await page.locator('#replay').focus();
+  await page.keyboard.press('Space'); // native button activation starts replay
+  assert.equal(await page.locator('.poster').getAttribute('data-mode'), 'replay');
+  await page.locator('#pause').focus();
+  await page.keyboard.press('Space'); // paused replay
+  for (let i = 0; i < 4; i++) await activate('#restart');
+  assert.equal(await page.locator('.poster').getAttribute('data-mode'), 'live');
+  await page.clock.runFor(100);
+  assert.deepEqual(await head(page), { x: 11, y: 10 }, 'Exit/restart keeps one clock and clears pause');
+  await page.locator('[data-direction="up"]').focus();
+  await page.keyboard.press('Space'); // native steering activation must not pause
+  assert.equal(await page.locator('#board').getAttribute('data-status'), 'running');
+  await page.clock.runFor(100);
+  // A legal turn is accepted even if an obstacle ends the new run.
+  assert.ok(await page.locator('#replay').isEnabled());
+  await page.locator('#seed').fill('-1');
+  await activate('.challenge-controls button');
+  assert.equal(await page.locator('#seed').evaluate(el => el.validity.valid), false);
+  await page.locator('#seed').fill('0');
+  await page.locator('#challenge-difficulty').selectOption('normal');
+  await activate('.challenge-controls button');
+  assert.equal(await page.locator('#difficulty').inputValue(), 'normal');
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForFunction(() => document.documentElement.dataset.ready === 'true');
+  assert.equal(await page.locator('#challenge-difficulty').inputValue(), 'normal');
+  assert.equal(await page.locator('#seed').inputValue(), '1', 'Seeds and recordings are not persisted');
+  await activate('#pause');
+  for (const selector of ['#seed', '#challenge', '#challenge-difficulty', '#replay']) {
+    const box = await page.locator(selector).boundingBox();
+    assert.ok(box.width >= 44 && box.height >= 44, 'Integrated controls have large touch targets');
+  }
+  await page.locator('#seed').focus();
+  assert.notEqual(await page.locator('#seed').evaluate(el => getComputedStyle(el).outlineStyle), 'none');
 }
 
 const profile = process.env.SNAKE_FEATURES ?? 'none';
@@ -157,14 +224,13 @@ try {
       assert.equal(await page.title(), 'Snake Arcade');
       assert.equal(await page.getByRole('heading', { level: 1 }).textContent(), 'Small snake.Big ambitions.');
       const enabled = profile === 'all' && query === '?features=all';
-      assert.ok(await page.getByRole('heading', { name: 'On the drawing board' }).isVisible());
-      assert.ok(!engineRequests.some(url => new URL(url).pathname === '/challenges.mjs'),
-        'Challenge API must not be wired into the shell');
+      assert.ok(await page.getByRole('heading', { name: enabled ? 'At the controls' : 'On the drawing board' }).isVisible());
       if (enabled) {
         assert.deepEqual(engineRequests.map(url => new URL(url).pathname).sort(),
-          ['/board.mjs', '/game.mjs'], 'Enabled gameplay loads the classic engine and topology helper only');
+          ['/board.mjs', '/challenges.mjs', '/game.mjs'], 'Enabled integration loads completed engine modules');
         await checkGameplay(page, name);
         await checkPersistence(page);
+        await checkIntegration(page, name);
       } else {
         assert.ok(await page.getByText('Gameplay is coming soon.', { exact: true }).isVisible());
         assert.equal(await page.locator('button, canvas').count(), 0, 'Disabled mode preserves shell');
@@ -173,9 +239,9 @@ try {
         assert.deepEqual(await page.evaluate(() => window.storageCalls), { reads: 0, writes: 0 }, 'Disabled mode never reads or writes storage');
       }
       assert.deepEqual(await page.evaluate(() => JSON.parse(document.documentElement.dataset.features)), resolveFeatures(query === `?features=${profile}` ? profile : undefined));
-      assert.deepEqual(await page.evaluate(() => JSON.parse(document.documentElement.dataset.availableFeatures)), resolveFeatures({ gameplay: enabled, savedProgress: enabled }));
+      assert.deepEqual(await page.evaluate(() => JSON.parse(document.documentElement.dataset.availableFeatures)), resolveFeatures({ gameplay: enabled, savedProgress: enabled, challenges: enabled, replay: enabled }));
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: horizontal overflow`);
-      assert.deepEqual(replayRequests, [], 'Replay UI integration remains off, even under all');
+      assert.equal(replayRequests.length > 0, enabled, 'Replay module loads only for enabled integration');
       assert.deepEqual(errors, [], `${name}: browser errors`);
       if (query === `?features=${profile}`) {
         const path = join(artifacts, `${name}.png`);
@@ -230,6 +296,28 @@ try {
     assert.equal(await page.locator('#saved-progress').count(), 0);
     assert.equal(await page.evaluate(() => window.storageAccesses), 0);
     assert.deepEqual(storageRequests, [], 'Gameplay alone must not import storage');
+    await page.close();
+  }
+  // Individual UI flags must not implicitly enable each other or saved progress.
+  for (const flag of ['challenges', 'replay']) {
+    const page = await browser.newPage();
+    await page.clock.install(); await page.clock.pauseAt(new Date());
+    await page.goto(`${server.url}/?features=none`, { waitUntil: 'networkidle' });
+    await page.evaluate(async flag => {
+      const { mountGameplay } = await import('./gameplay.mjs');
+      await mountGameplay({ [flag]: true });
+    }, flag);
+    assert.equal(await page.locator('.challenge-controls').count(), flag === 'challenges' ? 1 : 0);
+    assert.equal(await page.locator('#replay').count(), flag === 'replay' ? 1 : 0);
+    assert.equal(await page.locator('#saved-progress').count(), 0);
+    if (flag === 'replay') {
+      await page.clock.runFor(1600);
+      await page.locator('#replay').click();
+      await page.clock.runFor(1600);
+      assert.equal(await page.locator('.poster').getAttribute('data-mode'), 'replay-ended');
+      await page.locator('#restart').click();
+      assert.equal(await page.locator('.poster').getAttribute('data-mode'), 'live');
+    }
     await page.close();
   }
   if (profile === 'all') {

@@ -2,10 +2,8 @@
 
 The default browser remains a static shell. The completed gameplay adapter is
 loaded only when gameplay is requested. `storage.mjs` is loaded only when
-savedProgress is requested. `challenges.mjs` provides standalone opt-in
-configuration, not browser UI. `replay.mjs` provides pure opt-in recording and
-playback APIs, not browser controls. Both UI capabilities remain unavailable even
-under `all`.
+savedProgress is requested. Challenge selection and replay controls are wired
+behind their individual flags and require gameplay. No feature flag is persisted.
 
 ## Features (`features.mjs`, implemented)
 
@@ -23,7 +21,7 @@ The first query value wins for duplicate parameters. No URL flag is persisted.
 it to the URL. It accepts only `none` and `all`, defaulting to `none`.
 
 **Requested is not available.** The shell records the resolved request in
-`document.documentElement.dataset.features` and its active availability (only gameplay and savedProgress may be true) in
+`document.documentElement.dataset.features` and its active availability (challenge/replay also require gameplay) in
 `dataset.availableFeatures` (both JSON). `dataset.ready` becomes `true` when the
 shell module has initialized. Even an enabled request cannot activate missing
 modules. Later increments may activate a requested capability only once that
@@ -32,17 +30,27 @@ These dataset values are QA diagnostics, not authorization controls.
 
 ## Browser adapter (`controller.mjs`, `gameplay.mjs`, implemented)
 
-`mountGameplay({ progress } = {})` optionally accepts the storage adapter below and replaces the decorative poster only when gameplay is enabled.
+`mountGameplay({ progress, challenges = false, replay = false } = {})` is async,
+optionally accepts the storage adapter below, and replaces the decorative poster
+only when gameplay is enabled. It dynamically loads challenge/replay dependencies
+only when their respective UI flags are enabled.
 It renders `canvas#board`, numeric-only `#score`, `button#pause`, `button#restart`,
 and four `button[data-direction]` controls. Keyboard arrows/WASD steer; Space
 prevents scrolling/default button activation and toggles pause. Key repeats are
 ignored. Hidden documents pause automatically. Game-over status directs restart.
 
-`createController(render, { schedule = setInterval, cancel = clearInterval } = {})`
-returns `direction(name)`, `pause()`, `restart()`, and `dispose()`. It publishes
-immutable engine state initially and after updates. One lifetime interval runs at
-exported `STEP_MS = 160`; restart resets state/input latch, never schedules another
-clock. At most one accepted turn per tick prevents chained input from reversing
+`createController(render, { schedule = setInterval, cancel = clearInterval,
+options = {}, challengeFactory, replay } = {})` returns `direction(name)`,
+`pause()`, `restart(nextOptions = currentOptions)`, `replayLast()`, and `dispose()`.
+Injected optional dependencies are `createChallenge` and the replay module.
+It publishes immutable state plus `{ mode, canReplay, recordingAvailable }`.
+Modes are `live`, `replay`, and `replay-ended`. Only live games accept steering.
+Restart exits replay and resets pause/input latch; last completed replay is retained.
+Exactly one interval is active: classic runs use `STEP_MS = 160`; challenges use
+`getTickMs(state)`. Speed changes cancel the old interval before scheduling another.
+Pauses do not advance recording or playback. Replays are validated before use,
+visibly watch-only, and cannot post scores. Recording budget exhaustion leaves
+live gameplay working but excludes that run from replay. Recordings are session-only. At most one accepted turn per tick prevents chained input from reversing
 into the neck. Ignored inputs do not consume the latch. Pause does not clear it.
 Disposal cancels the clock and makes operations inert. No storage is accessed.
 
@@ -93,7 +101,7 @@ copies); malformed state snapshots are outside this contract. The future storage
 boundary must validate snapshots before use. The browser adapter owns input and
 scheduling, not the engine.
 
-## Challenges (`challenges.mjs`, implemented; not wired to UI)
+## Challenges (`challenges.mjs`, implemented; individually flagged UI)
 
 `createChallenge({ width = 20, height = 20, seed = 1, difficulty = 'normal',
 obstacleCount } = {})` returns a deeply frozen engine options object:
@@ -155,10 +163,13 @@ one cell. Speeds in milliseconds are:
 
 Progression is derived from score (floor(score / 5)), never elapsed time. Pause
 and collisions do not change it; restart resets score/speed. Engine options are
-explicit library opt-ins, independent of feature requests. Enabled gameplay
-loads the classic engine without challenge options. The shell never imports
-challenges and advertises them as unavailable even under `all`; challenge UI
-wiring remains a later integration increment. `board.mjs` is an
+explicit library opt-ins, independent of feature requests. Gameplay without the challenge flag
+loads the classic engine without challenge options. With challenges enabled,
+players select classic or seeded challenge, an unsigned 32-bit seed, and difficulty.
+Starting selection creates a fresh game; Restart repeats the active configuration.
+Saved difficulty selects the initial board type/difficulty; starting a selection
+updates that preference. Changing a preference never mutates an active run.
+Seeds are not persisted. `board.mjs` is an
 internal topology helper, not a public API.
 
 ## Other reserved boundaries
@@ -176,30 +187,32 @@ internal topology helper, not a public API.
   `MAX_RECORD_LENGTH = 2048` characters, over `MAX_SCORES = 10` scores, invalid
   scores (integers from 0 to 1,000,000 only), or invalid settings. Defaults are
   empty scores, sound false, difficulty `classic`; other accepted preferences
-  are `easy` and `hard`. Extra fields are discarded. Scores sort descending;
+  are `easy`, `normal`, and `hard`. Extra fields are discarded. Scores sort descending;
   updates retain the top ten, including ties and zero. Invalid API updates throw
   RangeError before mutation. Gameplay records only transitions into gameover,
-  never pauses, restarts or running games. Sound/difficulty are preferences only;
-  no audio or preference-driven difficulty is wired. Standalone engine difficulty
-  options do not consume these settings. The panel renders numeric scores
+  never pauses, restarts or running games. Sound is a preference only;
+  no audio is wired. Difficulty is consumed by challenge UI only when enabled. The panel renders numeric scores
   and settings using safe DOM properties; no stored HTML is rendered.
 - `replay.mjs` (implemented): pure recording, bounded validation and playback,
-  documented below. No browser UI integration or persistence.
+  documented below. Individually flagged browser controls; no replay persistence.
 
 Later increments must document concrete exports and payload versions here before
 cross-module use. The shell must continue to render without these modules when
 unavailable, including under the `all` QA profile.
 
-## Replay (`replay.mjs`, implemented; explicit module opt-in only)
+## Replay (`replay.mjs`, implemented; individually flagged UI)
 
-The shell/controller do not import this module. The replay request defaults false;
-`all` requests replay but does not activate UI. Consumers must explicitly import
-these APIs. They use the existing engine, never storage, clocks or DOM:
+The replay request defaults false. Enabled gameplay lazily imports the module
+only when replay is requested. The UI offers last **completed** live run playback;
+Restart exits to a fresh live game. Scores are announced but never saved during
+playback. The pure APIs use the existing engine, never storage, clocks or DOM:
 
 - `createRecording({ width = 20, height = 20, seed = 1 } = {})` returns a deeply
   frozen session `{ state, ticks, inputs }`. Options follow engine rules, except
   replay boards are limited to `MAX_CELLS = 4096` cells. Version 1 records classic
-  games only (width, height, seed); challenge options are not part of this schema.
+  games only (width, height, seed). Supplying `difficulty` (`easy`, `normal`, `hard`)
+  opts into version 2, regenerating default challenge layouts using `createChallenge`.
+  Custom obstacle layouts/counts are outside this recording API.
 - `recordDirection(session, direction)` returns a new session for an accepted turn,
   or the same session for an invalid/same/reverse direction or a second accepted
   turn in that simulation tick. Ignored inputs do not consume the latch. This is
@@ -224,8 +237,13 @@ these APIs. They use the existing engine, never storage, clocks or DOM:
   `unsupported` (unknown version), and `oversized` (size/work budget). Expected
   outcomes detect divergence, not forgery; recordings are not authenticated.
 
-Version `REPLAY_VERSION = 1` describes current engine rules and input policy;
-changes to deterministic engine semantics require a new version or migration:
+Version `REPLAY_VERSION = 1` retains classic rules and input policy.
+`CHALLENGE_REPLAY_VERSION = 2` adds exactly one options field, `difficulty`, and
+uses deterministic default challenge generation (including safeStart). Both versions
+are accepted; unknown versions and unexpected fields are rejected. Challenge layout
+generation is additionally bounded by `MAX_CELLS` (O(area²)). As with engine rules,
+changing deterministic challenge generation requires a version change.
+Version 1 example:
 
 ```json
 {"version":1,"options":{"width":20,"height":20,"seed":1},"ticks":1,"inputs":[{"tick":0,"direction":"up"}],"expected":{"score":0,"status":"running"}}
