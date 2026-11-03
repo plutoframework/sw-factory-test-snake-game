@@ -3,8 +3,9 @@
 The default browser remains a static shell. The completed gameplay adapter is
 loaded only when gameplay is requested. `storage.mjs` is loaded only when
 savedProgress is requested. `challenges.mjs` provides standalone opt-in
-configuration, not browser UI; challenge UI remains unavailable even under `all`.
-`replay.mjs` deliberately does not exist and remains unavailable.
+configuration, not browser UI. `replay.mjs` provides pure opt-in recording and
+playback APIs, not browser controls. Both UI capabilities remain unavailable even
+under `all`.
 
 ## Features (`features.mjs`, implemented)
 
@@ -182,13 +183,70 @@ internal topology helper, not a public API.
   no audio or preference-driven difficulty is wired. Standalone engine difficulty
   options do not consume these settings. The panel renders numeric scores
   and settings using safe DOM properties; no stored HTML is rendered.
-- `replay.mjs`: versioned seed/configuration plus ordered input recording and
-  deterministic playback through engine operations. No separate simulation rules
-  and no recording/playback implemented.
+- `replay.mjs` (implemented): pure recording, bounded validation and playback,
+  documented below. No browser UI integration or persistence.
 
 Later increments must document concrete exports and payload versions here before
 cross-module use. The shell must continue to render without these modules when
 unavailable, including under the `all` QA profile.
+
+## Replay (`replay.mjs`, implemented; explicit module opt-in only)
+
+The shell/controller do not import this module. The replay request defaults false;
+`all` requests replay but does not activate UI. Consumers must explicitly import
+these APIs. They use the existing engine, never storage, clocks or DOM:
+
+- `createRecording({ width = 20, height = 20, seed = 1 } = {})` returns a deeply
+  frozen session `{ state, ticks, inputs }`. Options follow engine rules, except
+  replay boards are limited to `MAX_CELLS = 4096` cells. Version 1 records classic
+  games only (width, height, seed); challenge options are not part of this schema.
+- `recordDirection(session, direction)` returns a new session for an accepted turn,
+  or the same session for an invalid/same/reverse direction or a second accepted
+  turn in that simulation tick. Ignored inputs do not consume the latch. This is
+  the controller's one-turn-per-tick policy, not unrestricted raw engine turns.
+- `stepRecording(session)` advances one running engine tick and increments `ticks`,
+  including a collision tick. Game-over calls are no-ops. Call only on actual
+  simulation updates: paused/display frames must not call this function. Keep pause
+  state outside the recording; pauses do not clear pending turns. No wall-clock
+  timestamps are recorded. Restart begins a new session with `createRecording`.
+- `finishRecording(session)` returns JSON text, either a running prefix or a
+  completed run. A pending direction must be stepped before export. Sessions are
+  trusted opaque outputs of these APIs, not an import boundary. Invalid options,
+  pending export and recording budget exhaustion throw `RangeError`; retain the
+  previous session to export when a budget is reached.
+- `validateReplay(raw)` accepts **JSON text only** and returns
+  `{ ok: true, record }` (deeply frozen) or `{ ok: false, code, message }`.
+  It checks structure/bounds without simulation. Extra fields are rejected.
+- `playbackReplay(raw)` validates first, then returns `{ ok: true, state, ticks }`
+  or the same error shape. State is the full frozen engine state. It rejects
+  ignored turns and steps after game over as `incompatible`, and verifies the
+  recorded score/status (`mismatch` on divergence). Other codes are `malformed`,
+  `unsupported` (unknown version), and `oversized` (size/work budget). Expected
+  outcomes detect divergence, not forgery; recordings are not authenticated.
+
+Version `REPLAY_VERSION = 1` describes current engine rules and input policy;
+changes to deterministic engine semantics require a new version or migration:
+
+```json
+{"version":1,"options":{"width":20,"height":20,"seed":1},"ticks":1,"inputs":[{"tick":0,"direction":"up"}],"expected":{"score":0,"status":"running"}}
+```
+
+Ticks are zero-based: an input at tick 0 applies before the first `tick`. Inputs
+must be strictly increasing and unique, cardinal, and less than total `ticks`.
+Expected status is `running` or `gameover`, never paused. Limits are exported:
+`MAX_RECORD_LENGTH = 524288` characters (checked before JSON parsing),
+`MAX_TICKS = 10000`, `MAX_INPUTS = 10000`, and
+`MAX_WORK = 4000000` for `width * height * (ticks + 1)`. These cap parsing,
+iteration, food scans and state copying independently of supplied timestamps.
+Validation does not establish semantic compatibility; use playback for that.
+
+```js
+let session = createRecording({ seed: 1 });
+session = recordDirection(session, 'up');
+session = stepRecording(session); // omit calls while paused
+const raw = finishRecording(session);
+const result = playbackReplay(raw); // result.state deeply equals session.state
+```
 
 ## Development infrastructure
 
